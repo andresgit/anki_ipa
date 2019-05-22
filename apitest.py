@@ -13,8 +13,9 @@ text = """[1] „Ob eine Äußerung noch Satire oder bereits ein <i>Hasskommenta
 
 def getWordType(contents):
     # print(contents)
-    x= re.search(r"=== \{\{Wortart\|(.*?)\|Deutsch\}\}",contents)
-    return x.group(1)
+    x= re.search(r"=== (\{\{Wortart\|(.*?)\|Deutsch\}\}.*)",contents)
+    # print("Here",x.groups())
+    return f"{x.group(2)} adjektivisch" if "adjektivische Deklination" in x.group(1) else x.group(2)
 
 articles = {"m": "der", "f": "die", "n": "das"}
 def joinPlural(els):
@@ -27,7 +28,14 @@ def joinPlural(els):
     #     results.append(el if isinstance(el,str) else ", ".join(el if len(el)==1 else ["("+ ", ".join(el) +")"]))
     # return results
 def getPlural(contents, wordtype):
-    if wordtype=="Substantiv":
+    if wordtype=="Substantiv adjektivisch":
+        table = re.search(r"\{\{Deutsch adjektivisch Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
+        stamms = re.findall(r"\|Stamm.*?=(\w*)",table)
+        stamm = ""
+        for n, x in enumerate(stamms):
+            stamm += (("" if n==0 else "/") + f"{x}") if x not in stamms[:n] else ""
+        return f"der {stamm}", stamm.replace("/","n/")+"n"
+    elif wordtype=="Substantiv":
         # table = re.search(r"\{\{Deutsch Substantiv Übersicht.*?\}\}",contents, flags=re.MULTILINE)
         table = re.search(r"\{\{Deutsch Substantiv Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
         genders = re.findall(r"\|Genus.*?=(\w*)",table)
@@ -63,10 +71,22 @@ def splitMultDefs(contents, lang = "de"):
     langsectiontitles = {"de": "({{Sprache|Deutsch}})", "en": "German"}
     split = re.split(r"(^==[^=]*?==$)", contents, flags=re.MULTILINE)
     assert len(split)%2==1, "Wrong number of sections in the page."
-    data = []
     for n in range((len(split)-1)//2):
         if langsectiontitles[lang] in split[1+2*n]:
-            data.append(split[1+2*n]+split[1+2*n+1])
+            sectiontitle = split[1+2*n]
+            section = split[1+2*n]+split[1+2*n+1]
+    # print(f"\n{repr(section)}")
+    multipledeftitles = {"de": r"(=== \{\{Wortart\|.*?\|Deutsch\}\}.*)", "en": r"([.\s]*)"}
+    data = []
+    split = re.split(multipledeftitles[lang], section)
+    # print()
+    # for x in split:
+    #     print(f"\nHere{repr(x)}")
+    for n in range((len(split)-1)//2):
+        # if re.search(multipledeftitles[lang], split[1+2*n]):
+        data.append(sectiontitle+"\n"+split[1+2*n]+split[1+2*n+1])
+    # for x in data:
+    #     print(f"\nThere{repr(x)}")
     return data
 
 def replacer(m, replacements,namedgroups):
@@ -79,7 +99,7 @@ def replacer(m, replacements,namedgroups):
 def kreplacer(m):
     print(m)
     result = "<i>"+", ".join(m.group(1).split("|"))+":</i>"
-    result = re.sub(r", t\d+=(.*?),", "\g<1>", result).replace("_","").replace("ft=","")
+    result = re.sub(r", t\d+=(.*?),", r"\g<1>", result).replace("_","").replace("ft=","")
     return result
 def curlyjoiner(m):
     return "<i>"+"".join(m.group(1).split("|"))+"</i>"
@@ -104,10 +124,6 @@ def getExamples(contents):
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
     print(rawdata)
 
-def newlinetodiv(text):
-    text = re.sub("\n(.*)","\n<div>\g<1></div>",text)
-    print(text)
-
 def addFromFile():
     file = open(os.path.expanduser("~/Desktop/ankiaddwords.txt"))
     contents = file.read()
@@ -128,11 +144,12 @@ def getIPA2(words, lang="de"):
 
 def getIPA2contents(contents):
     word = re.search(r"==\s*(\w+)\s*.*?==",contents)
+    print(f"\ncontents2 {repr(contents)}")
     word=word.group(1)
     rawdata = re.search(r"\{\{IPA\}\}\s*(.*)\s*", contents).group(1)
-    replacements = {"''(?P<quote>.*?)''": "", "\{\{Lautschrift\|(?P<laut>.*?)\}\}": "", r"(?P<ref><ref>.*?</ref>)": "",
+    replacements = {"''(?P<quote>.*?)''": "", r"\{\{Lautschrift\|(?P<laut>.*?)\}\}": "", r"(?P<ref><ref>.*?</ref>)": "",
         r"\[\[": "", r"\]\]": "",}
-    namedgroups = {"quote": r"<i>\g<quote></i>", "ref": "", "laut": "[\g<laut>]"}
+    namedgroups = {"quote": r"<i>\g<quote></i>", "ref": "", "laut": r"[\g<laut>]"}
     if replacements:
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
@@ -159,7 +176,7 @@ def getTranslation(contents, lang="en"):
     rawdata = re.search(r"\*\{\{"+lang+r"}\}:\s*(.*)", contents)
     if rawdata:
         rawdata = rawdata.group(1)
-        rawdata = re.sub(r"\{\{Ü\|"+lang+r"\|(.*?)\}\}", "\g<1>", rawdata)
+        rawdata = re.sub(r"\{\{Ü\|"+lang+r"\|(.*?)\}\}", r"\g<1>", rawdata)
         return rawdata
     else:
         return None
@@ -172,11 +189,11 @@ def getWiktionaryContents(words, whichWords = 1, lang="de"):
         words2 = words[50*n:50*(n+1)]
         data = requests.get(f"https://"+lang+f".wiktionary.org/w/api.php?action=query&format=json&prop=revisions&rvprop=content&rvslots=*&titles="+"|".join(words2))
         data = json.loads(data.text)["query"]["pages"]
-        # for el in data:
-        #     print(f"el {el}\ntitle <{data[el]['title']}>\nkeys {data[el].keys()}")
         contents = {data[el]["title"]: None if int(el)<0 else data[el]["revisions"][0]["slots"]["main"]["*"] for el in data}
+        print(f"\ncontents {contents}")
         for word in contents:
             multDefs = splitMultDefs(contents[word], lang=lang)
+            print(f"\nmultdefs {multDefs}")
             texts[word] = multDefs[whichWords[50*n+words2.index(word)]-1] if multDefs else None
     return texts
 
@@ -253,7 +270,15 @@ notes = [
     """}
 ]
 
-addAllIpas(notes)
+# w = """[1] <i>keine Steigerung</i>: auf die Ethik bezogen, die Ethik betreffend
+# [2] gemäß der Ethik sich verhaltend"""
+
+def newlinetodiv(text):
+    return re.sub(r"(\n|^)(.*)\n",r"\g<1><div>\g<2></div>\n",text)
+
+# print(newlinetodiv(w))
+
+# addAllIpas(notes)
 
 # a = [[],[]]
 
@@ -262,10 +287,17 @@ addAllIpas(notes)
 
 # print(a)
 
-# lang="de"
-# words = ["Haus","derr"]
-# texts = getWiktionaryContents(words, lang=lang)
-# print(getIPA2(words,lang=lang))
+# x = re.match("(?=\w+)[^\d]+","asd")
+# print(x)
+
+lang="de"
+words = "beste"
+whichWords = [1]
+texts = getWiktionaryContents(words, whichWords=whichWords, lang=lang)
+# print(texts)
+# print(getWordType(texts[words]))
+# print(getPlural(texts[words], getWordType(texts[words])))
+print(getIPA2(words,lang=lang))
 
 # print(word)
 # for word, content in getWiktionaryContents(word).items():

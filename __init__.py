@@ -22,7 +22,9 @@ from collections import deque
 # We're going to add a menu item below. First we want to create a function to
 # be called when the menu item is activated.
 
-
+def tooltip2(text, period=1000, parent=None):
+    if parent is None: parent=bw
+    tooltip(text, period=period, parent=parent)
 
 def remHTML(text):
     return BeautifulSoup(text, "html.parser").text
@@ -132,11 +134,17 @@ def onSetupMenus(self):
     bw = self
     self.menuView = stayMenu(_("&IPA"))
     self.menuGender = stayMenu(_("&Gender"))
+    self.menuWiktionary = stayMenu(_("&Wiktionary"))
+    self.menuDuden = stayMenu(_("&Duden"))
     self.menuMisc = stayMenu(_("&Misc"))
     self.menuBar().insertMenu(
         self.mw.form.menuTools.menuAction(), self.menuView)
     self.menuBar().insertMenu(
         self.mw.form.menuTools.menuAction(), self.menuGender)
+    self.menuBar().insertMenu(
+        self.mw.form.menuTools.menuAction(), self.menuWiktionary)
+    self.menuBar().insertMenu(
+        self.mw.form.menuTools.menuAction(), self.menuDuden)
     self.menuBar().insertMenu(
         self.mw.form.menuTools.menuAction(), self.menuMisc)
     menu = self.menuView
@@ -162,23 +170,82 @@ def onSetupMenus(self):
     self.g2 = menu.addAction("Remove gender colors")
     self.g2.triggered.connect(lambda: colorGender(remove=True))
     
-    menu = self.menuMisc
-    self.m1 = menu.addAction("nbsp to space")
-    self.m1.triggered.connect(lambda: nbsp_to_space())
+    menu = self.menuWiktionary
     self.m2 = menu.addAction("Get from Wiktionary")
     self.m2.triggered.connect(lambda: getWiktionary())
     self.m3 = menu.addAction("Overwrite from Wiktionary")
     self.m3.setCheckable(True)
     self.m3.setChecked(False)
+    self.m6 = menu.addAction("Overwrite German from Wiktionary")
+    self.m6.setCheckable(True)
+    self.m6.setChecked(False)
     self.m4 = menu.addAction("Add from file")
     self.m4.triggered.connect(lambda: addFromFile())
+
+    menu = self.menuMisc
+    self.m1 = menu.addAction("nbsp to space")
+    self.m1.triggered.connect(lambda: nbsp_to_space())
+    self.m5 = menu.addAction("To German Part of Speech")
+    self.m5.triggered.connect(lambda: partOfSpeech())
+    self.m5 = menu.addAction("Make adjektivisch Part of Speech")
+    self.m5.triggered.connect(lambda: adjektivischPartOfSpeech())
 ##    a2.triggered.connect(lambda: testFunction(overwrite = True))
 ##    a3.triggered.connect(lambda: testFunction(overwriteIfVar = True))
 ##    a4.triggered.connect(lambda: testFunction(checkEnglishIfNone = True))
 ##    a.triggered.connect(Thread(target=testFunction, args=(mw,aqt.dialogs._dialogs['Browser'][1])).start)
 
-def addAllIpas(notes):
-    notes[0]["IPA"]="4"
+def adjektivischPartOfSpeech():
+    noteidsall = bw.selectedNotes()
+    digits = len(str(len(noteidsall)))
+    for n in range(1+(len(noteidsall)-1)//50):
+        setToolText(f"{'Downloading':<25} {n*50+1:>{digits}}/{len(noteidsall)}")
+        noteids = noteidsall[n*50:(n+1)*50]
+        notes, words, hints = [], [], []
+        for k, noteid in enumerate(noteids):
+            note = mw.col.getNote(noteid)
+            notes.append(note)
+            w = note["German"]
+            w = remHTML(w)
+            hint = note["Wiktionary nr"]
+            word = re.search("(?:der|die|das)\s+(\w+)|(\w+)",w)
+            word = word.group(1) or word.group(2)
+            words.append(word)
+            hints.append(int(hint) if hint else 1)
+        contents = getWiktionaryContents(words,hints)
+        for k, (note,word) in enumerate(zip(notes,words)):
+            ind = 50*n+k
+            setToolText(f"{'Working on word number':<25} {ind+1:>{digits}}/{len(noteidsall)}")
+            content = contents[word]
+            if content is None: continue
+            wordType = getWordType(content)
+            if wordType == "Substantiv adjektivisch":
+                note["Part of Speech"] = wordType
+                note.flush()
+    mw.reset()
+
+    # notes = bw.selectedNotes()
+    # for k, noteid in enumerate(notes):
+    #     note = mw.col.getNote(noteid)
+    #     word = re.search("(?:der|die|das)\s+(\w+)|(\w+)",remHTML(note["German"]))
+    #     word = word.group(1) or word.group(2)
+    #     wordType = getWordType(getWiktionaryContents(word)[word])
+    #     if wordType == "Substantiv adjektivisch":
+    #         note["Part of Speech"] = wordType
+    #         note.flush()
+    # mw.reset()
+
+def partOfSpeech():
+    replacements={"noun": "Substantiv", "verb": "Verb", "adj": "Adjektiv", "adv": "Adverb", "prep": "Präposition", "num": "Numerale"}
+    notes = bw.selectedNotes()
+    for k, noteid in enumerate(notes):
+        note = mw.col.getNote(noteid)
+        field = "Part of Speech"
+        if note[field] in replacements:
+            note[field] = replacements[note[field]]
+            note.flush()
+    mw.reset()
+
+def addAllIpas(notes, overwrite=False):
     wordstoget = set()
     jobs = deque()
     fields = {"German": "IPA", "Plural and inflected forms": "IPA Plural"}
@@ -188,10 +255,15 @@ def addAllIpas(notes):
         # print(f"m of note: {m}")
         jobs.append([note,1,[]])
         for field in fields:
-            entry = note[field]
-            # print(f"for field <{field}> entry len {len(entry.split())} <{entry}>")
             breakdowns = jobs[-1][2]
             breakdowns.append([])
+            entry = note[field]
+            if note[fields[field]] and (not overwrite):
+                # showInfo(f"here1 entry {entry}")
+                continue
+            if re.match("^(<font.*>)?(?:no plural|no singular)(</font>)?$",entry):
+                entry = ""
+            # print(f"for field <{field}> entry len {len(entry.split())} <{entry}>")
             # print(f"breakdown <{re.split(matchstring,entry)}>")
             for x in re.split(matchstring,entry,flags=re.MULTILINE):
                 if x=="" or re.search(matchstring,x,flags=re.MULTILINE):
@@ -206,7 +278,7 @@ def addAllIpas(notes):
                         setToolText(f"{'IPA Downloading':<20} {m+1}/{len(notes)}")
                         ipas = getIPA2(list(wordstoget))
                         setToolText(f"{'IPA Processing':<20} {m+1}/{len(notes)}")
-                        processIPAs(jobs, ipas, fields)
+                        processIPAs(jobs, ipas, fields, overwrite=overwrite)
                         wordstoget = set()
         jobs[-1][1]=0
     if jobs:
@@ -214,9 +286,9 @@ def addAllIpas(notes):
         ipas = getIPA2(list(wordstoget))
         # print(f"\nprocessing the end\nlen wordstoget: {len(wordstoget)}\nipas: {ipas}\nwordstoget: {wordstoget}")
         setToolText(f"{'IPA Processing':<20} {m+1}/{len(notes)}")
-        processIPAs(jobs, ipas, fields)
+        processIPAs(jobs, ipas, fields, overwrite=overwrite)
         
-def processIPAs(jobs, ipas, fields, checkEnglish=True):
+def processIPAs(jobs, ipas, fields, checkEnglish=True, overwrite=False):
     for k, job in enumerate(jobs):
         # print(f"job: {job}")
         for field, breakdown in zip(fields.values(), job[2]):
@@ -230,9 +302,10 @@ def processIPAs(jobs, ipas, fields, checkEnglish=True):
                     else:
                         el[1] = ipa
                 # print(f"el end {el}")
-            print(f"breakdown {breakdown}\nconnected {list(zip(*breakdown))}\nstring {''.join(list(zip(*breakdown))[1])}")
+            # print(f"breakdown {breakdown}\nconnected {list(zip(*breakdown))}\nstring {''.join(list(zip(*breakdown))[1])}")
             # job[0]["IPA"]="1"
-            job[0][field]="".join(list(zip(*breakdown))[1])
+            if job[1]==0 and (not job[0][field] or overwrite) and breakdown:
+                job[0][field]="".join(list(zip(*breakdown))[1])
             # job[0]["IPA Plural"]="2"
             # showInfo(f"job[0]: {job[0]}\ngerman: {job[0]['German']}\nfield: {field}\nvalue: {''.join(list(zip(*breakdown))[1])}")
         if job[1]==0:
@@ -251,16 +324,17 @@ def addFromFile():
     addwords = []
     missedwords = []
     notes = []
+    setToolText(f"Reading in the file.")
     for line in contents.splitlines():
         word = re.search(r"^\w+", line)
         number = re.search(r"\d+", line)
         hint = re.search(r"\(.*\)", line)
         addwords.append([word.group(0),int(number.group(0)) if number else 1,hint.group(0) if hint else None])
     for n in range(1+(len(addwords)-1)//50):
-        setToolText(f"Downloading {n*50+1}/{len(addwords)}")
+        setToolText(f"{'Downloading':<25} {n*50+1}/{len(addwords)}")
         words, whichs, hints = zip(*addwords[n*50:(n+1)*50])
         contents = getWiktionaryContents(words, whichs)
-        for k, word in enumerate(words):
+        for k, (word, hint) in enumerate(zip(words,hints)):
             ind = n*50+k
             setToolText(f"Working on word number {ind+1}/{len(addwords)}")
             content = contents[word]
@@ -269,8 +343,10 @@ def addFromFile():
                 continue
             wordType = getWordType(content)
             plurals = getPlural(content, wordType)
-            meanings = getMeanings(content)
+            meanings = getMeanings(content, word=word) + (f" {hint}" if hint else "")
             examples = getExamples(content)
+            english = getTranslation(content, lang="en")
+            estonian = getTranslation(content, lang="et")
             newgerman = f"{plurals[0]} {plurals[1]}" if wordType=="Substantiv" else word
             plural = f"die {plurals[2]}" if wordType=="Substantiv" else plurals
             newgerman = coloredName(newgerman,word)
@@ -280,9 +356,10 @@ def addFromFile():
             if not ids:
                 note = mw.col.newNote()
                 for field, value in (("German", newgerman),
-                                ("Plural and inflected forms", plural), ("English", newlinetodiv(meanings)), ("Part of Speech", wordType),
-                                ("Sample sentence", newlinetodiv(examples))):
-                    note[field] = value
+                                ("Plural and inflected forms", plural), ("Definition", newlinetodiv(meanings)), ("Part of Speech", wordType),
+                                ("Sample sentence", newlinetodiv(examples)), ("English", english), ("Estonian", estonian)):
+                    if value:
+                        note[field] = value
                 mw.col.addNote(note)
                 notes.append(note)
     setToolText(f"Starting to work on IPA")
@@ -300,29 +377,103 @@ def addFromFile():
 def getWiktionary(notes=None, overwrite=False):
     # bw = aqt.dialogs._dialogs['Browser'][1]
     overwrite = bw.m3.isChecked()
-    notes = bw.selectedNotes()
-    for k, n in enumerate(notes):
-        obj = mw.col.getNote(n)
-        w = obj["German"]
-        w = remHTML(w)
-        word = re.search("(?:der|die|das)?\s*(\w+)",w).group(1)
-        contents = getWiktionaryContents(word,1)
-        wordType = getWordType(contents)
-        plurals = getPlural(contents, wordType)
-        meanings = getMeanings(contents)
-        examples = getExamples(contents)
-        newgerman = f"{plurals[0]} {plurals[1]}" if wordType=="Substantiv" else w
-        plural = f"die {plurals[2]}" if wordType=="Substantiv" else plurals
+    noteidsall = bw.selectedNotes()
+    notesall, missedwords = [], []
+    digits = len(str(len(noteidsall)))
+    for n in range(1+(len(noteidsall)-1)//50):
+        setToolText(f"{'Downloading':<25} {n*50+1:>{digits}}/{len(noteidsall)}")
+        noteids = noteidsall[n*50:(n+1)*50]
+        notes, words, hints = [], [], []
+        for k, noteid in enumerate(noteids):
+            try:
+                note = mw.col.getNote(noteid)
+                notes.append(note)
+                w = note["German"]
+                w = remHTML(w)
+                hint = note["Wiktionary nr"]
+                word = re.search("(?:der|die|das)\s+(\w+)|(\w+)",w)
+                word = word.group(1) or word.group(2)
+                words.append(word)
+                hints.append(int(hint) if hint else 1)
+            except Exception as e:
+                sys.stderr.write(f"Failed for word {word}\nerror {e}\nw {w}")
+                raise e
+        # showInfo(f"notes {notes}")
+        try:
+            notesall.extend(notes)
+            contents = getWiktionaryContents(words,hints)
+        except Exception as e:
+            sys.stderr.write(f"Failed for words {words}")
+            raise e
+        for k, (note,word) in enumerate(zip(notes,words)):
+            # showInfo(f"note {note}\nword {word}")
+            ind = 50*n+k
+            setToolText(f"{'Working on word number':<25} {ind+1:>{digits}}/{len(noteidsall)}")
+            content = contents[word]
+            content = contents[word]
+            if content is None:
+                missedwords.append(word)
+                continue
+            try:
+                wordType = getWordType(content)
+                if wordType is None:
+                    missedwords.append(word)
+                    continue
+                plurals = getPlural(content, wordType)
+                meanings = getMeanings(content, word=word)
+                examples = getExamples(content)
+                english = getTranslation(content, lang="en")
+                estonian = getTranslation(content, lang="et")
+                newgerman = plurals[0] if wordType=="Substantiv" else word
+                plural = ("no plural" if not plurals[1] else f"die {plurals[1]}") if wordType=="Substantiv" else plurals
+                newgermanc = coloredName(newgerman,newgerman)
+                pluralc = coloredName(plural,newgerman)
 
-        # showInfo(f"<b>word:</b> {word}\n<b>wordType:</b> {wordType}\n<b>plurals:</b> {plurals}\n<b>plural:</b> {plural}\n<b>meanings:</b> {meanings}\n<b>examples:</b> {examples}")
-        for field, value in (("German" if newgerman!=w else "", changeGerman),
-                            ("Plural and inflected forms", plural), ("English", newlinetodiv(meanings)), ("Part of Speech", wordType),
-                            ("Sample sentence", newlinetodiv(examples))):
-            if field and (overwrite or obj[field]==""):
-                obj[field] = value
-        obj.flush()
-    showInfo("Inserted data from Wiktionary for {} cards.".format(len(notes)), parent=bw)
+                for field, value in (("German" if newgerman!=w else "", newgermanc),
+                                ("Plural and inflected forms", pluralc), ("Definition", newlinetodiv(meanings)), ("Part of Speech", wordType),
+                                ("Sample sentence", newlinetodiv(examples)), ("English", english), ("Estonian", estonian)):
+                    if field and (overwrite or note[field]==""):
+                        if value is None: value=""
+                        # showInfo(f"field {field}\nvalue {value}\ntype value {type(value)}\ntype notefield {type(note[field])}\nnotefield {note[field]}")
+                        note[field] = value
+            except Exception as e:
+                sys.stderr.write(f"Failed for ind {ind} german {note['German']} word {word}\nerror {e}\ncontent {content}")
+                raise e
+            # showInfo("\n".join([f"{field}" for field in note]))
+            # t = [f"field {field} type {type(note[field])} value {note[field]}" for field in note]
+            # showInfo("\n".join(t))
+            note.flush()
+    setToolText(f"Starting to work on IPA")
+    addAllIpas(notesall, overwrite=overwrite)
+    closeTooltip()
+    if len(missedwords): showInfo(f"Missed words: {', '.join(missedwords)}", parent=bw)
+    else: showInfo("Inserted data from Wiktionary for {} cards.".format(len(noteidsall)), parent=bw)
     mw.reset()
+
+    # for k, noteid in enumerate(notes):
+    #     obj = mw.col.getNote(noteid)
+    #     w = obj["German"]
+    #     w = remHTML(w)
+    #     word = re.search("(?:der|die|das)?\s*(\w+)",w).group(1)
+    #     contents = getWiktionaryContents(word,1)
+    #     wordType = getWordType(contents)
+    #     plurals = getPlural(contents, wordType)
+    #     meanings = getMeanings(contents)
+    #     examples = getExamples(contents)
+    #     english = getTranslation(conten, lang="en")
+    #     estonian = getTranslation(conten, lang="et")
+    #     newgerman = f"{plurals[0]} {plurals[1]}" if wordType=="Substantiv" else w
+    #     plural = f"die {plurals[2]}" if wordType=="Substantiv" else plurals
+
+    #     # showInfo(f"<b>word:</b> {word}\n<b>wordType:</b> {wordType}\n<b>plurals:</b> {plurals}\n<b>plural:</b> {plural}\n<b>meanings:</b> {meanings}\n<b>examples:</b> {examples}")
+    #     for field, value in (("German" if newgerman!=w else "", newgerman),
+    #                         ("Plural and inflected forms", plural), ("Definition", newlinetodiv(meanings)), ("Part of Speech", wordType),
+    #                         ("Sample sentence", newlinetodiv(examples)), ("English", english), ("Estonian", estonian)):
+    #         if field and (overwrite or obj[field]==""):
+    #             obj[field] = value
+    #     obj.flush()
+    # showInfo("Inserted data from Wiktionary for {} cards.".format(len(notes)), parent=bw)
+    # mw.reset()
 
 def getWiktionaryContents(words, whichWords = 1, lang="de"):
     words = [words] if isinstance(words,str) else words
@@ -332,27 +483,38 @@ def getWiktionaryContents(words, whichWords = 1, lang="de"):
         words2 = words[50*n:50*(n+1)]
         data = requests.get(f"https://"+lang+f".wiktionary.org/w/api.php?action=query&format=json&prop=revisions&rvprop=content&rvslots=*&titles="+"|".join(words2))
         data = json.loads(data.text)["query"]["pages"]
-        # for el in data:
-        #     print(f"el {el}\ntitle <{data[el]['title']}>\nkeys {data[el].keys()}")
         contents = {data[el]["title"]: None if int(el)<0 else data[el]["revisions"][0]["slots"]["main"]["*"] for el in data}
         for word in contents:
-            multDefs = splitMultDefs(contents[word], lang=lang)
-            texts[word] = multDefs[whichWords[50*n+words2.index(word)]-1] if multDefs else None
+            try:
+                multDefs = splitMultDefs(contents[word], lang=lang)
+                texts[word] = multDefs[whichWords[50*n+words2.index(word)]-1] if multDefs else None
+            except Exception as e:
+                sys.stderr.write(f"Failed for word {word}\nerror {e}\nwords {words}\nwords2 {words2}\n")
+                raise e
     return texts
 
 def newlinetodiv(text):
-    return re.sub("\n(.*)","\n<div>\g<1></div>",text)
+    if text is None: return None
+    return re.sub(r"(\n|^)(.*)\n",r"\g<1><div>\g<2></div>\n",text)
 
 def getWordType(contents):
-    x= re.search(r"=== \{\{Wortart\|(.*?)\|Deutsch\}\}",contents)
-    return x.group(1)
+    x= re.search(r"=== (\{\{Wortart\|(.*?)\|Deutsch\}\}.*)",contents)
+    if not x: return None
+    return f"{x.group(2)} adjektivisch" if "adjektivische Deklination" in x.group(1) else x.group(2)
 
 articles = {"m": "der", "f": "die", "n": "das"}
 def joinPlural(els):
     return ", ".join([el if isinstance(el,str) else ", ".join(el if len(el)==1 else ["("+ ", ".join(el) +")"]) for el in els])
 def getPlural(contents, wordtype):
-    if wordtype=="Substantiv":
-        table = re.search(r"\{\{Deutsch Substantiv Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
+    if wordtype=="Substantiv adjektivisch":
+        table = re.search(r"\{\{Deutsch adjektivisch Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
+        stamms = re.findall(r"\|Stamm.*?=(\w*)",table)
+        stamm = ""
+        for n, x in enumerate(stamms):
+            stamm += (("" if n==0 else "/") + f"{x}") if x not in stamms[:n] else ""
+        return f"der {stamm}", stamm.replace("/","n/")+"n"
+    elif wordtype=="Substantiv":
+        table = re.search(r"\{\{Deutsch (?:Substantiv|Name) Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
         genders = re.findall(r"\|Genus.*?=(\w*)",table)
         
         singulars = re.findall(r"\|Nominativ Singular.*?=(\w*)",table)
@@ -361,13 +523,20 @@ def getPlural(contents, wordtype):
             singular += (("" if n==0 else "/") + f"{x}") if x not in singulars[:n] else ""
         plurals = re.findall(r"\|Nominativ Plural.*?=(\w*)",table)
         plural = ""
-        for n, x in enumerate(plurals):
-            plural += (("" if n==0 else "/") + f"{x}") if x not in plurals[:n] else ""
-        article = "/".join(articles[x] for x in genders)
 
-        return article, singular, plural
+        if len(genders)==1 and genders[0] not in articles:
+            return plural, f"no singular" 
+        else:
+            for n, x in enumerate(plurals):
+                plural += (("" if n==0 else "/") + f"{x}") if x not in plurals[:n] else ""
+            article = "/".join(articles[x] for x in genders)
+            
+            return f"{article} {singular}", plural
     elif wordtype=="Adjektiv":
-        table = re.search(r"\{\{Deutsch Adjektiv Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
+        table = re.search(r"\{\{Deutsch Adjektiv Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL)
+        if not table:
+            return None
+        table = table.group(1)
         komp = re.findall(r"\|Komparativ.*?=(\w*)",table)
         sup = re.findall(r"\|Superlativ.*?=(\w*)",table)
         return joinPlural([komp,sup])
@@ -382,14 +551,26 @@ def getPlural(contents, wordtype):
         return None
 
 def splitMultDefs(contents, lang = "de"):
-    if contents is None: return None
-    langsectiontitles = {"de": "({{Sprache|Deutsch}})", "en": "German"}
-    split = re.split(r"(^==[^=]*?==$)", contents, flags=re.MULTILINE)
-    assert len(split)%2==1, "Wrong number of sections in the page."
-    data = []
-    for n in range((len(split)-1)//2):
-        if langsectiontitles[lang] in split[1+2*n]:
-            data.append(split[1+2*n]+split[1+2*n+1])
+    try:
+        if contents is None: return None
+        langsectiontitles = {"de": "({{Sprache|Deutsch}})", "en": "German"}
+        split = re.split(r"(^==[^=]*?==$)", contents, flags=re.MULTILINE)
+        assert len(split)%2==1, "Wrong number of sections in the page."
+        section = None
+        for n in range((len(split)-1)//2):
+            if langsectiontitles[lang] in split[1+2*n]:
+                sectiontitle = split[1+2*n]
+                section = split[1+2*n]+split[1+2*n+1]
+        if section is None: return None
+        multipledeftitles = {"de": r"(=== \{\{Wortart\|.*?\|Deutsch\}\}.*)", "en": ".*"}
+        data = []
+        split = re.split(multipledeftitles[lang], section)
+        for n in range((len(split)-1)//2):
+            # if re.search(multipledeftitles[lang], split[1+2*n]):
+            data.append(sectiontitle+"\n"+split[1+2*n]+split[1+2*n+1])
+    except Exception as e:
+        sys.stderr.write(f"Contents {contents}")
+        raise e
     return data
 
 def replacer(m, replacements,namedgroups):
@@ -405,20 +586,28 @@ def kreplacer(m):
     return result
 def curlyjoiner(m):
     return "<i>"+"".join(m.group(1).split("|"))+"</i>"
-def getMeanings(contents):
-    rawdata = re.search(r"\{\{Bedeutungen\}\}\s*(.*?)(?:\n\n|\n\{\{)", contents, flags=re.DOTALL).group(1)
+def getMeanings(contents, word=None, hideWord=True):
+    rawdata = re.search(r"\{\{Bedeutungen\}\}\s*(.*?)(?:\n\n|\n\{\{)", contents, flags=re.DOTALL)
+    if not rawdata:
+        return None
+    rawdata = rawdata.group(1)
     replacements = {r"\[\[": "", r"\]\]": "", "''(?P<quote>.*?)''": "",
-                    r":+\[(?P<start>\d)\]": "", r"kPl\.": "kein Plural", r"kSt\.": "keine Steigerung"}
+                    r":+\[(?P<start>.*?)\]": "", r"kPl\.": "kein Plural", r"kSt\.": "keine Steigerung"}
     namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"[\g<start>]"}
     rawdata = re.sub(r"\{\{K\|(.*?)\}\}", lambda x: kreplacer(x), rawdata)
     rawdata = re.sub(r"\{\{(.*?)\}\}", lambda x: curlyjoiner(x), rawdata)
     if replacements:
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
+    if hideWord:
+        rawdata = rawdata.replace(word,"_")
     return rawdata
 
 def getExamples(contents):
-    rawdata = re.search(r"\{\{Beispiele\}\}\s*(.*?)(?:\n\n|\n\{\{)", contents, flags=re.DOTALL).group(1)
+    rawdata = re.search(r"\{\{Beispiele\}\}\s*(.*?)(?:\n\n|\n\{\{)", contents, flags=re.DOTALL)
+    if not rawdata:
+        return None
+    rawdata = rawdata.group(1)
     replacements = {r"\[\[": "", r"\]\]": "", "''(?P<quote>.*?)''": "",
                     r":+\[(?P<start>\d)\]": "", r"kPl\.": "kein Plural", r"(?P<ref><ref>.*?</ref>)": "",
                     r"(?P<beispf>\s*\{\{Beispiele fehlen.*?\}\})": ""}
@@ -487,6 +676,8 @@ def nbsp_to_space():
     showInfo("Worked on {} cards, replaced &nbsp; in {} cards.".format(len(notes),edited_N))
 
 def coloredName(word, german):
+    if not word:
+        return word
     cols = {"die": "#ff0000", "der": "#0000ff", "das": "#00aa00"}
     match = re.match("\W*?(\w+)", german)
     gend = match.group(1) if match else None
@@ -554,14 +745,16 @@ def displayData(note):
 
 def setToolText(text, period=60*1000): #closeTooltip() to close it
     if not aqt.utils._tooltipTimer:
-        tooltip("text", period=period, parent=bw)
+        bw.setFocus()
+        tooltip("text", period=period, parent=aqt.dialogs._dialogs['Browser'][1])
         aqt.utils._tooltipLabel.setWindowFlags(Qt.SplashScreen)
         aqt.utils._tooltipLabel.show()
-        aqt.utils._tooltipLabel.setText("<table cellpadding=10>\n<tr>\n<td>{}</td>\n</tr>\n</table>".format("Starting to work on IPAs."))
+        aqt.utils._tooltipLabel.setText("<table cellpadding=10>\n<tr>\n<td><pre>{}</pre></td>\n</tr>\n</table>".format(text))
         aqt.utils._tooltipLabel.adjustSize()
         qApp.processEvents()
+        bw.activateWindow()
     aqt.utils._tooltipTimer.setInterval(period)
-    aqt.utils._tooltipLabel.setText("<table cellpadding=10>\n<tr>\n<td>{}</td>\n</tr>\n</table>".format(text))
+    aqt.utils._tooltipLabel.setText("<table cellpadding=10>\n<tr>\n<td><pre>{}</pre></td>\n</tr>\n</table>".format(text))
     aqt.utils._tooltipLabel.adjustSize()
     qApp.processEvents()
 
