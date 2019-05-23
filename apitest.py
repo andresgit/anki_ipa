@@ -11,6 +11,9 @@ text = """[1] „Ob eine Äußerung noch Satire oder bereits ein <i>Hasskommenta
 [1] „Dadurch, dass nicht jeder herabsetzende Kommentar automatisch ein <i>Hasskommentar</i> ist, der gelöscht wird, sondern Vertreter der PC-Ideologie als Gatekeeper dienen und entscheiden, welche Art von Kommentaren legitim sind und welche nicht […], führt der »Kampf gegen den Hass« einseitig dazu, dass unliebsame Meinungen gelöscht und praktisch zensiert werden.“
 [1] „Da ich vor Kurzem die tolle Idee eines öffentlichen Posts hatte, haben sich auf meiner Pinnwand hunderte <i>Hasskommentare</i> gesammelt. Mir wird ganz übel, als ich die schrecklichen Nachrichten lese.“"""
 
+def remHTML(text):
+    return BeautifulSoup(text, "html.parser").text
+
 def getWordType(contents):
     # print(contents)
     x= re.search(r"=== (\{\{Wortart\|(.*?)\|Deutsch\}\}.*)",contents)
@@ -19,15 +22,8 @@ def getWordType(contents):
 
 articles = {"m": "der", "f": "die", "n": "das"}
 def joinPlural(els):
-    print(els)
     return ", ".join([el if isinstance(el,str) else ", ".join(el if len(el)==1 else ["("+ ", ".join(el) +")"]) for el in els])
-    # results = []
-    # for el in els:
-    #     print(f"el: {el}")
-    #     print("joined", ("("+ ", ".join(el) +")"))
-    #     results.append(el if isinstance(el,str) else ", ".join(el if len(el)==1 else ["("+ ", ".join(el) +")"]))
-    # return results
-def getPlural(contents, wordtype):
+def getPlural(contents, wordtype, foreword=None):
     if wordtype=="Substantiv adjektivisch":
         table = re.search(r"\{\{Deutsch adjektivisch Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
         stamms = re.findall(r"\|Stamm.*?=(\w*)",table)
@@ -36,8 +32,7 @@ def getPlural(contents, wordtype):
             stamm += (("" if n==0 else "/") + f"{x}") if x not in stamms[:n] else ""
         return f"der {stamm}", stamm.replace("/","n/")+"n"
     elif wordtype=="Substantiv":
-        # table = re.search(r"\{\{Deutsch Substantiv Übersicht.*?\}\}",contents, flags=re.MULTILINE)
-        table = re.search(r"\{\{Deutsch Substantiv Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
+        table = re.search(r"\{\{Deutsch (?:Substantiv|Name) Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
         genders = re.findall(r"\|Genus.*?=(\w*)",table)
         
         singulars = re.findall(r"\|Nominativ Singular.*?=(\w*)",table)
@@ -46,23 +41,35 @@ def getPlural(contents, wordtype):
             singular += (("" if n==0 else "/") + f"{x}") if x not in singulars[:n] else ""
         plurals = re.findall(r"\|Nominativ Plural.*?=(\w*)",table)
         plural = ""
-        for n, x in enumerate(plurals):
-            plural += (("" if n==0 else "/") + f"{x}") if x not in plurals[:n] else ""
-        article = "/".join(articles[x] for x in genders)
 
-        return article, singular, plural
+        if len(genders)==1 and genders[0] not in articles:
+            return plural, f"no singular" 
+        else:
+            for n, x in enumerate(plurals):
+                plural += (("" if n==0 else "/") + f"{x}") if x not in plurals[:n] else ""
+            article = "/".join(articles[x] for x in genders)
+            
+            return f"{article} {singular}", plural
     elif wordtype=="Adjektiv":
-        table = re.search(r"\{\{Deutsch Adjektiv Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
+        table = re.search(r"\{\{Deutsch Adjektiv Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL)
+        if not table:
+            return None
+        table = table.group(1)
         komp = re.findall(r"\|Komparativ.*?=(\w*)",table)
         sup = re.findall(r"\|Superlativ.*?=(\w*)",table)
+        print(komp,sup, komp or sup)
+        if not ("".join(komp) or "".join(sup)):
+            return None
         return joinPlural([komp,sup])
     elif wordtype=="Verb":
+        addsichlambda = lambda word: addsich(word, foreword)
         table = re.search(r"\{\{Deutsch Verb Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
-        präsens = re.findall(r"\|Präsens_er, sie, es.*?=(\w*)",table)
-        präteritum = re.findall(r"\|Präteritum_ich.*?=(\w*)",table)
-        partizip = re.findall(r"\|Partizip II.*?=(\w*)",table)
-        hilfverb = "/".join(re.findall(r"\|Hilfsverb.*?=(\w*)",table)).replace("sein","ist").replace("haben","hat")
-        return joinPlural([präsens, präteritum, hilfverb+" " + joinPlural([partizip])])
+        präsens = re.findall(r"\|Präsens_er, sie, es.*?=\s*(.*)\s*",table)
+        präteritum = re.findall(r"\|Präteritum_ich.*?=\s*(.*)\s*",table)
+        partizip = re.findall(r"\|Partizip II.*?=\s*(.*)\s*",table)
+        hilfverb = "/".join(re.findall(r"\|Hilfsverb.*?=\s*(.*)\s*",table)).replace("sein","ist").replace("haben","hat")
+        präsens, präteritum = list(map(addsichlambda,präsens)), list(map(addsichlambda,präteritum))
+        return joinPlural([präsens, präteritum, addsichlambda(hilfverb+" " + joinPlural([partizip]))])
     else:
         return None
 
@@ -97,32 +104,41 @@ def replacer(m, replacements,namedgroups):
             key = k
     return m.expand(namedgroups[key]) if key is not None else replacements[re.escape(m.group(0))]
 def kreplacer(m):
-    print(m)
     result = "<i>"+", ".join(m.group(1).split("|"))+":</i>"
     result = re.sub(r", t\d+=(.*?),", r"\g<1>", result).replace("_","").replace("ft=","")
     return result
 def curlyjoiner(m):
     return "<i>"+"".join(m.group(1).split("|"))+"</i>"
-def getMeanings(contents):
-    rawdata = re.search(r"\{\{Bedeutungen\}\}\s*(.*?)(?:\n\n|\n\{\{)", contents, flags=re.DOTALL).group(1)
-    replacements = {r"\[\[": "", r"\]\]": "", "''(?P<quote>.*?)''": "",
-                    r":+\[(?P<start>\d)\]": "", r"kPl\.": "kein Plural"}
-    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"[\g<start>]"}
+def getMeanings(contents, word=None, hideWord=True):
+    rawdata = re.search(r"\{\{Bedeutungen\}\}\s*(.*?)(?:\n\n|\n\{\{)", contents, flags=re.DOTALL)
+    if not rawdata:
+        return None
+    rawdata = rawdata.group(1)
+    replacements = {r"\[\[[^\]]*\|(?P<link>.*?)\]\]": "",
+                    r"\[\[": "", r"\]\]": "", "''(?P<quote>.*?)''": "", r"(?P<ref><ref>.*?</ref>)": "",
+                    r":+\[(?P<start>.*?)\]": "", r"kPl\.": "kein Plural", r"kSt\.": "keine Steigerung"}
+    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"[\g<start>]", "ref": "", "link": r"\g<1>"}
     rawdata = re.sub(r"\{\{K\|(.*?)\}\}", lambda x: kreplacer(x), rawdata)
     rawdata = re.sub(r"\{\{(.*?)\}\}", lambda x: curlyjoiner(x), rawdata)
     if replacements:
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
-    print(rawdata)
+    if hideWord:
+        rawdata = rawdata.replace(word,"_")
+    return rawdata
 
 def getExamples(contents):
-    rawdata = re.search(r"\{\{Beispiele\}\}\s*(.*?)(?:\n\n|\n\{\{)", contents, flags=re.DOTALL).group(1)
+    rawdata = re.search(r"\{\{Beispiele\}\}\s*(.*?)(?:\n\n|\n\{\{)", contents, flags=re.DOTALL)
+    if not rawdata:
+        return None
+    rawdata = rawdata.group(1)
     replacements = {r"\[\[": "", r"\]\]": "", "''(?P<quote>.*?)''": "",
-                    r":+\[(?P<start>\d)\]": "", r"kPl\.": "kein Plural", r"(?P<ref><ref>.*?</ref>)": ""}
-    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"[\g<start>]", "ref": ""}
+                    r"(?:(?<=\n)|^):+(?P<start>\[)(?=[^\[]|$)": "", r"kPl\.": "kein Plural", r"(?P<ref><ref>.*?</ref>)": "",
+                    r"(?P<beispf>\s*\{\{Beispiele fehlen.*?\}\})": ""}
+    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"\g<start>", "ref": "", "beispf": ""}
     if replacements:
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
-    print(rawdata)
+    return rawdata
 
 def addFromFile():
     file = open(os.path.expanduser("~/Desktop/ankiaddwords.txt"))
@@ -190,10 +206,10 @@ def getWiktionaryContents(words, whichWords = 1, lang="de"):
         data = requests.get(f"https://"+lang+f".wiktionary.org/w/api.php?action=query&format=json&prop=revisions&rvprop=content&rvslots=*&titles="+"|".join(words2))
         data = json.loads(data.text)["query"]["pages"]
         contents = {data[el]["title"]: None if int(el)<0 else data[el]["revisions"][0]["slots"]["main"]["*"] for el in data}
-        print(f"\ncontents {contents}")
+        # print(f"\ncontents {contents}")
         for word in contents:
             multDefs = splitMultDefs(contents[word], lang=lang)
-            print(f"\nmultdefs {multDefs}")
+            # print(f"\nmultdefs {multDefs}")
             texts[word] = multDefs[whichWords[50*n+words2.index(word)]-1] if multDefs else None
     return texts
 
@@ -274,76 +290,94 @@ notes = [
 # [2] gemäß der Ethik sich verhaltend"""
 
 def newlinetodiv(text):
-    return re.sub(r"(\n|^)(.*)\n",r"\g<1><div>\g<2></div>\n",text)
+    # print(repr(text))
+    # x = re.findall(r"(\n|^)(.+)(?=\n)",text)
+    # print(x)
+    # x = re.sub(r"(?=(\n|^))(.+)(?=\n)",r"\g<1><div>\g<2></div>\n",text)
+    return re.sub(r"(\n|^)(.+)(?=\n)",r"\g<1><div>\g<2></div>",text)
 
-# print(newlinetodiv(w))
+def getMainWord(german):
+    word = remHTML(german)
+    print(word)
+    return re.search(r"^(?:((?:sich|(?:\(?(?:der|die|das)(?:/(?:der|die|das))?\)?)))\s+)?(-?\w+)",word)
 
-# addAllIpas(notes)
+def getOuter(text, element, innerInstead=False):
+    parts = re.split(f"(<{element}|</{element}>)",text)
+    startn = 0
+    for part in parts:
+        if part==f"<{element}":
+            break
+        startn+=1
+    openn = 0
+    wantedparts = []
+    k=0
+    for k, part in enumerate(parts[startn:]):
+        if part==f"<{element}":
+            openn+=1
+        elif part==f"</{element}>":
+            openn-=1
+        wantedparts.append(part)
+        if openn==0:
+            break
+    if innerInstead:
+        return "".join(wantedparts[1:-1] if openn==0 else wantedparts[1:]), "".join(parts[startn+k+1:])
+    else:
+        return "".join(wantedparts), "".join(parts[startn+k+1:])
 
-# a = [[],[]]
+def parsediv(text, divtext):
+    parts = re.split(f"({re.escape(divtext)})",text)
+    text = parts[1]+parts[2]
+    section, remaining = getOuter(text, "div")
+    remaining = text
+    sections = []
+    while section:
+        section, remaining = getOuter(remaining,"li")
+        if '<li class="enumeration__sub-item"' in text:
+            subsection = remainingsub = section
+            subsections = []
+            while subsection:
+                subsection, remainingsub = getOuter(remainingsub,"li")
+                subsections.append(subsection)
+            sections.append(subsections)
+        else:
+            sections.append([section])
+        for k, sec in enumerate(sections[-1]):
+            meaning, examples = getOuter(sec,"div",True)
+            examples, remainingex = getOuter(examples,"dd")
+            remainingex=examples
+            examplelist = []
+            while examples:
+                examples, remainingex = getOuter(remainingex,"li",True)
+                examplelist.append(examples)
+            sections[-1][k]=[meaning,examplelist]
+    for section in sections: print(f"\n{repr(section[:200])}")
 
-# for n, x in enumerate(a):
-#     x.append(1)
-
-# print(a)
-
-# x = re.match("(?=\w+)[^\d]+","asd")
-# print(x)
+def getDuden(word):
+    data = requests.get(f"https://www.duden.de/rechtschreibung/{word}").text
+    parsediv(data, '<div class="division "  id="bedeutungen">')
+    # print(data)
 
 lang="de"
-words = "beste"
-whichWords = [1]
-texts = getWiktionaryContents(words, whichWords=whichWords, lang=lang)
+word = "Haus"
+whichWords = 1
+
+getDuden(word)
+
+# texts = getWiktionaryContents(word, whichWords=whichWords, lang=lang)
+# content = texts[word]
+# examples = getExamples(content)
+# print(examples)
+# main = getMainWord(word)
+# print(main)
+
+# plural = getPlural(content,getWordType(content))
+# print(plural)
+# meanings = getMeanings(texts[word], word=word)
+# print(meanings)
+# newlinetodiv(meanings)
+# print(repr(meanings))
+# print(newlinetodiv(meanings))
 # print(texts)
 # print(getWordType(texts[words]))
 # print(getPlural(texts[words], getWordType(texts[words])))
-print(getIPA2(words,lang=lang))
-
-# print(word)
-# for word, content in getWiktionaryContents(word).items():
-#     print(f"word {word}, type {getWordType(content)}")
-# print(getWiktionaryContents(word))
-
-# data = requests.get(f"https://de.wiktionary.org/w/api.php?action=query&format=json&prop=revisions&rvprop=content&rvslots=*&titles="+word)
-# # data = requests.get(f"https://en.wiktionary.org/w/api.php?action=query&format=json&prop=revisions&rvprop=content&rvslots=*&titles="+word)
-# data = json.loads(data.text)["query"]["pages"]
-# # print(data)
-# content = {data[el]["title"]: None if el==-1 else data[el]["revisions"][0]["slots"]["main"]["*"] for el in data}
-# text = splitMultDefs(content[word])[0]
-# text = splitMultDefsen(content[word])[0]
-# print(text)
-
-# print(getTranslation(text, lang="et"))
-# print(getIPA(text))
-# print(getIPAen(text))
-# print(content[word])
-# print(content)
-
-# getExamples(text)
-
-# newlinetodiv(text)
-
-# splitMultDefs(text)
-# print(getWordType(text))
-# wordType = getWordType(text)
-# plural = getPlural(text, wordType)
-
-# print(f"wordType: {wordType}\nplural: {plural}")
-
-# x = """== hand ({{Sprache|Englisch}}) ==
-# === {{Wortart|Substantiv|Englisch}} ===
-# """
-# y = re.split(r"^== .*? ==$",x,flags=re.MULTILINE)
-# print(y)
-
-# f = requests.get(f"https://de.wiktionary.org/w/api.php?action=query&format=json&prop=revisions&rvprop=content&rvslots=*&titles=schützen|frech")
-# data = json.loads(f.text)["query"]["pages"]
-# # for el in data:
-# #     print(data[el]["title"])
-# #     if el != -1:
-# #         print(data[el]["revisions"][0]["slots"]["main"]["*"])
-# data = {data[el]["title"]: None if el==-1 else data[el]["revisions"][0]["slots"]["main"]["*"] for el in data}
-# print(data)
-#     # if
-# # print(json.dumps(data, sort_keys=True, indent=4))
-
+# print(getIPA2(words,lang=lang))
