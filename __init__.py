@@ -161,6 +161,16 @@ def onSetupMenus(self):
     self.m9.setCheckable(True)
     self.m9.setChecked(False)
 
+    menu = self.menuDuden
+    self.m10 = menu.addAction("Overwrite definitions if they exist")
+    self.m10.setCheckable(True)
+    self.m10.setChecked(False)
+    self.m11 = menu.addAction("Overwrite examples if they exist")
+    self.m11.setCheckable(True)
+    self.m11.setChecked(False)
+    self.m12 = menu.addAction("Get from Duden")
+    self.m12.triggered.connect(lambda: getDuden())
+
     menu = self.menuMisc
     self.m1 = menu.addAction("nbsp to space")
     self.m1.triggered.connect(lambda: nbsp_to_space())
@@ -168,6 +178,87 @@ def onSetupMenus(self):
     self.m5.triggered.connect(lambda: partOfSpeech())
     self.m5 = menu.addAction("Make adjektivisch Part of Speech")
     self.m5.triggered.connect(lambda: adjektivischPartOfSpeech())
+
+def getDuden():
+    noteidsall = bw.selectedNotes()
+    digits = len(str(len(noteidsall)))
+    for n, noteid in enumerate(noteidsall):
+        setToolText(f"From Duden note nr: {n:>{digits}}/{len(noteidsall)}")
+        note = mw.col.getNote(noteid)
+        word = note["German"]
+        mainword = getMainWord(word)
+        meanings, examples = getDudenStr(mainword)
+        for field, value, extraCheck in ("Definition", meanings,bw.m10.isChecked()), ("Sample sentence", examples, bw.m11.isChecked()):
+            if value and (not note[field] or extraCheck):
+                note[field] = value
+
+def getDudenExamples(examples):
+    remainingex=examples
+    examplelist = []
+    while examples:
+        examples, remainingex = getOuter(remainingex,"li",True)
+        if examples is not None:
+            examplelist.append(examples)
+    return examplelist
+
+def getGrammatik(text):
+    grammatik = re.findall("Grammatik</dt>\s*<dd [^>]*>(.*?)</dd>",text)
+    if grammatik:
+        return " | ".join(grammatik)
+
+def parsediv(text, divtext):
+    parts = re.split(f"({divtext})",text)
+    text = parts[1]+parts[2]
+    section, remaining = getOuter(text, "div", True)
+    section, remaining = getOuter(section, "header", True)
+    if not re.search('id="Bedeutung', remaining):
+        remaining = re.sub("^.*<dl(?: |>).*Wendungen, Redensarten, Sprichwörter(?:.|\s)*(?:</dl>)","",remaining,flags=re.MULTILINE)
+    # if not re.search("<li",remaining):
+        parts = re.split("(^.*<dl(?: |>).*Beispiele(?:.|\s)*(?:</dl>))",remaining,flags=re.MULTILINE)
+        stripped = re.sub("^\s+|\s+$|<p>|</p>","",parts[0],flags=re.MULTILINE)
+        exampleslist = getDudenExamples("".join(parts[1:]))
+        # print(stripped)
+        return [[[stripped,exampleslist]]] if stripped else None
+    sections = []
+    while True:
+        section, remaining = getOuter(remaining,"li",True)
+        if section is None: break
+        if '<li class="enumeration__sub-item" id="Bedeutung' in section:
+            subsection = remainingsub = section
+            subsections = []
+            while remainingsub:
+                subsection, remainingsub = getOuter(remainingsub,"li",True)
+                if subsection is not None:
+                    subsections.append(subsection)
+            sections.append(subsections)
+        else:
+            sections.append([section])
+        for k, sec in enumerate(sections[-1]):
+            meaning, examples = getOuter(sec,"div",True)
+            grammatik = getGrammatik(examples)
+            if grammatik: meaning = f"{grammatik}: {meaning}"
+            examples, remainingex = getOuter(examples,"dd",True,True)
+            examplelist = getDudenExamples(examples)
+            sections[-1][k]=[meaning,examplelist]
+    # for section in sections:
+    #     print(f"\n<{repr(section)}>")
+    return sections
+
+def getDudenStr(word):
+    data = requests.get(f"https://www.duden.de/rechtschreibung/{word}").text
+    if "Die Seite wurde nicht gefunden" in data: return None
+    sections = parsediv(data, '<div class="division "  id="bedeutung(?:en)?">')
+    meanings, examples = [], []
+    for n, section in enumerate(sections):
+        for k, subsection in enumerate(section):
+            addletter = chr(ord('a')+k) if len(section)>1 else ""
+            meaning = re.sub("\n|<a href=[^>]*>|</a>", "",subsection[0])
+            meanings.append(f"[{n+1}{addletter}] {meaning}")
+            for example in subsection[1]:
+                example = re.sub("\n|<a href=[^>]*>|</a>", "",example)
+                examples.append(f"[{n+1}{addletter}] {example}")
+
+    return "\n".join(meanings), "\n".join(examples) or None
 
 def adjektivischPartOfSpeech():
     noteidsall = bw.selectedNotes()

@@ -301,68 +301,118 @@ def getMainWord(german):
     print(word)
     return re.search(r"^(?:((?:sich|(?:\(?(?:der|die|das)(?:/(?:der|die|das))?\)?)))\s+)?(-?\w+)",word)
 
-def getOuter(text, element, innerInstead=False):
-    parts = re.split(f"(<{element}|</{element}>)",text)
+def getOuter(text, element, innerInstead=False, noparams=False):
+    startstring = f"<{element}>" if noparams else f"<{element}[^>]*?>"
+    parts = re.split(f"({startstring}|</{element}>)",text)
     startn = 0
     for part in parts:
-        if part==f"<{element}":
+        if re.search(f"{startstring}",part):
             break
         startn+=1
     openn = 0
     wantedparts = []
     k=0
+    # print(f"startn {startn}\nparts {parts}")
     for k, part in enumerate(parts[startn:]):
-        if part==f"<{element}":
+        if re.search(f"{startstring}",part):
             openn+=1
         elif part==f"</{element}>":
             openn-=1
         wantedparts.append(part)
         if openn==0:
             break
+    # print(f"wantedparts {wantedparts}")
+    remaining = "".join(parts[startn+k+1:]) if openn==0 else None
     if innerInstead:
-        return "".join(wantedparts[1:-1] if openn==0 else wantedparts[1:]), "".join(parts[startn+k+1:])
+        return "".join(wantedparts[1:-1] if openn==0 else wantedparts[1:]) if wantedparts else None, remaining
     else:
-        return "".join(wantedparts), "".join(parts[startn+k+1:])
+        return "".join(wantedparts) if wantedparts else None, remaining
+
+# text = "<li></li> "
+# text = getOuter(text,"li",True)
+# print(text)
+
+# text = """'\n  \n      \n      <dl class="note"><dt class="note__title">Wendungen, Redensarten, Sprichwörter</dt>\n        <dd>\n          <ul class="note__list"><li>jemanden, etwas in Betracht ziehen (jemanden, etwas berücksichtigen, in Erwägung ziehen: es widerstrebte ihm, diese Möglichkeit auch nur in Betracht zu ziehen)</li>\n            <li>jemanden, etwas außer Betracht lassen (jemanden, etwas unbeachtet, unberücksichtigt lassen, von jemandem, etwas absehen: diese Aussage konnten sie nicht außer Betracht lassen)</li>\n            <li>[nicht] in Betracht kommen ([nicht] infrage kommen, [nicht] berücksichtigt werden: eine solche Lösung kommt nicht in Betracht; er kommt für den Posten, als Kandidat nicht in Betracht)</li>\n            <li>außer Betracht bleiben (unberücksichtigt bleiben)</li>\n          </ul></dd>\n      </dl>\n'"""
+# textnew = re.sub("^.*<dl(?: |>).*Wendungen, Redensarten, Sprichwörter(?:.|\s)*(?:</dl>)","",text,flags=re.MULTILINE)
+# print(f"\n{repr(text)}\n\n{repr(textnew)}")
+
+def getDudenExamples(examples):
+    remainingex=examples
+    examplelist = []
+    while examples:
+        examples, remainingex = getOuter(remainingex,"li",True)
+        if examples is not None:
+            examplelist.append(examples)
+    return examplelist
+
+def getGrammatik(text):
+    grammatik = re.findall("Grammatik</dt>\s*<dd [^>]*>(.*?)</dd>",text)
+    if grammatik:
+        return " | ".join(grammatik)
 
 def parsediv(text, divtext):
-    parts = re.split(f"({re.escape(divtext)})",text)
+    parts = re.split(f"({divtext})",text)
     text = parts[1]+parts[2]
-    section, remaining = getOuter(text, "div")
-    remaining = text
+    section, remaining = getOuter(text, "div", True)
+    section, remaining = getOuter(section, "header", True)
+    if not re.search('id="Bedeutung', remaining):
+        remaining = re.sub("^.*<dl(?: |>).*Wendungen, Redensarten, Sprichwörter(?:.|\s)*(?:</dl>)","",remaining,flags=re.MULTILINE)
+    # if not re.search("<li",remaining):
+        parts = re.split("(^.*<dl(?: |>).*Beispiele(?:.|\s)*(?:</dl>))",remaining,flags=re.MULTILINE)
+        stripped = re.sub("^\s+|\s+$|<p>|</p>","",parts[0],flags=re.MULTILINE)
+        exampleslist = getDudenExamples("".join(parts[1:]))
+        # print(stripped)
+        return [[[stripped,exampleslist]]] if stripped else None
     sections = []
-    while section:
-        section, remaining = getOuter(remaining,"li")
-        if '<li class="enumeration__sub-item"' in text:
+    while True:
+        section, remaining = getOuter(remaining,"li",True)
+        if section is None: break
+        if '<li class="enumeration__sub-item" id="Bedeutung' in section:
             subsection = remainingsub = section
             subsections = []
-            while subsection:
-                subsection, remainingsub = getOuter(remainingsub,"li")
-                subsections.append(subsection)
+            while remainingsub:
+                subsection, remainingsub = getOuter(remainingsub,"li",True)
+                if subsection is not None:
+                    subsections.append(subsection)
             sections.append(subsections)
         else:
             sections.append([section])
         for k, sec in enumerate(sections[-1]):
             meaning, examples = getOuter(sec,"div",True)
-            examples, remainingex = getOuter(examples,"dd")
-            remainingex=examples
-            examplelist = []
-            while examples:
-                examples, remainingex = getOuter(remainingex,"li",True)
-                examplelist.append(examples)
+            grammatik = getGrammatik(examples)
+            if grammatik: meaning = f"{grammatik}: {meaning}"
+            examples, remainingex = getOuter(examples,"dd",True,True)
+            examplelist = getDudenExamples(examples)
             sections[-1][k]=[meaning,examplelist]
-    for section in sections: print(f"\n{repr(section[:200])}")
+    # for section in sections:
+    #     print(f"\n<{repr(section)}>")
+    return sections
 
-def getDuden(word):
+def getDudenStr(word):
     data = requests.get(f"https://www.duden.de/rechtschreibung/{word}").text
-    parsediv(data, '<div class="division "  id="bedeutungen">')
-    # print(data)
+    if "Die Seite wurde nicht gefunden" in data: return None
+    sections = parsediv(data, '<div class="division "  id="bedeutung(?:en)?">')
+    meanings, examples = [], []
+    for n, section in enumerate(sections):
+        for k, subsection in enumerate(section):
+            addletter = chr(ord('a')+k) if len(section)>1 else ""
+            meaning = re.sub("\n|<a href=[^>]*>|</a>", "",subsection[0])
+            meanings.append(f"[{n+1}{addletter}] {meaning}")
+            for example in subsection[1]:
+                example = re.sub("\n|<a href=[^>]*>|</a>", "",example)
+                examples.append(f"[{n+1}{addletter}] {example}")
+
+    return "\n".join(meanings), "\n".join(examples) or None
 
 lang="de"
-word = "Haus"
+# word = "Haus"
+# word = "Estland"
+word = "hinwegsetzen"
 whichWords = 1
 
-getDuden(word)
-
+duden = getDudenStr(word)
+print(f"\n\nword:{word}")
+print(f"\n{duden}" if duden is None else f"\nmeanings\n{duden[0]}\n\nexamples\n{duden[1]}")
 # texts = getWiktionaryContents(word, whichWords=whichWords, lang=lang)
 # content = texts[word]
 # examples = getExamples(content)
