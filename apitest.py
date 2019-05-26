@@ -82,6 +82,7 @@ def splitMultDefs(contents, lang = "de"):
         if langsectiontitles[lang] in split[1+2*n]:
             sectiontitle = split[1+2*n]
             section = split[1+2*n]+split[1+2*n+1]
+            break
     # print(f"\n{repr(section)}")
     multipledeftitles = {"de": r"(=== \{\{Wortart\|.*?\|Deutsch\}\}.*)", "en": r"([.\s]*)"}
     data = []
@@ -328,14 +329,6 @@ def getOuter(text, element, innerInstead=False, noparams=False):
     else:
         return "".join(wantedparts) if wantedparts else None, remaining
 
-# text = "<li></li> "
-# text = getOuter(text,"li",True)
-# print(text)
-
-# text = """'\n  \n      \n      <dl class="note"><dt class="note__title">Wendungen, Redensarten, Sprichwörter</dt>\n        <dd>\n          <ul class="note__list"><li>jemanden, etwas in Betracht ziehen (jemanden, etwas berücksichtigen, in Erwägung ziehen: es widerstrebte ihm, diese Möglichkeit auch nur in Betracht zu ziehen)</li>\n            <li>jemanden, etwas außer Betracht lassen (jemanden, etwas unbeachtet, unberücksichtigt lassen, von jemandem, etwas absehen: diese Aussage konnten sie nicht außer Betracht lassen)</li>\n            <li>[nicht] in Betracht kommen ([nicht] infrage kommen, [nicht] berücksichtigt werden: eine solche Lösung kommt nicht in Betracht; er kommt für den Posten, als Kandidat nicht in Betracht)</li>\n            <li>außer Betracht bleiben (unberücksichtigt bleiben)</li>\n          </ul></dd>\n      </dl>\n'"""
-# textnew = re.sub("^.*<dl(?: |>).*Wendungen, Redensarten, Sprichwörter(?:.|\s)*(?:</dl>)","",text,flags=re.MULTILINE)
-# print(f"\n{repr(text)}\n\n{repr(textnew)}")
-
 def getDudenExamples(examples):
     remainingex=examples
     examplelist = []
@@ -352,13 +345,14 @@ def getGrammatik(text):
 
 def parsediv(text, divtext):
     parts = re.split(f"({divtext})",text)
-    text = parts[1]+parts[2]
+    text = "".join(parts[1:])#+parts[2]
+    if not text: return None
     section, remaining = getOuter(text, "div", True)
     section, remaining = getOuter(section, "header", True)
     if not re.search('id="Bedeutung', remaining):
-        remaining = re.sub("^.*<dl(?: |>).*Wendungen, Redensarten, Sprichwörter(?:.|\s)*(?:</dl>)","",remaining,flags=re.MULTILINE)
+        remaining = re.sub(r"<dl(?: |>)[^\n]*?Wendungen, Redensarten, Sprichwörter.*?</dl>","",remaining,flags=re.MULTILINE+re.DOTALL)
     # if not re.search("<li",remaining):
-        parts = re.split("(^.*<dl(?: |>).*Beispiele(?:.|\s)*(?:</dl>))",remaining,flags=re.MULTILINE)
+        parts = re.split(r"(<dl(?: |>)[^\n]*?Beispiele?.*?</dl>)",remaining,flags=re.MULTILINE+re.DOTALL)
         stripped = re.sub("^\s+|\s+$|<p>|</p>","",parts[0],flags=re.MULTILINE)
         exampleslist = getDudenExamples("".join(parts[1:]))
         # print(stripped)
@@ -388,35 +382,46 @@ def parsediv(text, divtext):
     #     print(f"\n<{repr(section)}>")
     return sections
 
+def replacerUmlaut(match,replacements):
+    return replacements[match.group(0)]
 def getDudenStr(word):
+    replacements = {"ü": "ue", "Ü": "Ue", "ä": "ae", "Ä": "Ae", "Ö": "Oe", "ö": "oe", "ß": "sz"}
+    word = re.sub("|".join(replacements.keys()),lambda x: replacerUmlaut(x,replacements),word)
     data = requests.get(f"https://www.duden.de/rechtschreibung/{word}").text
-    if "Die Seite wurde nicht gefunden" in data: return None
+    if "Die Seite wurde nicht gefunden" in data: return None, None
     sections = parsediv(data, '<div class="division "  id="bedeutung(?:en)?">')
+    if sections is None: return None, None
     meanings, examples = [], []
     for n, section in enumerate(sections):
         for k, subsection in enumerate(section):
             addletter = chr(ord('a')+k) if len(section)>1 else ""
-            meaning = re.sub("\n|<a href=[^>]*>|</a>", "",subsection[0])
+            meaning = re.sub("\n|<a href=[^>]*>|</a>", "",subsection[0] or "")
             meanings.append(f"[{n+1}{addletter}] {meaning}")
             for example in subsection[1]:
                 example = re.sub("\n|<a href=[^>]*>|</a>", "",example)
                 examples.append(f"[{n+1}{addletter}] {example}")
 
-    return "\n".join(meanings), "\n".join(examples) or None
+    return "\n".join(meanings), ("\n".join(examples) or None)
 
+# text = 'as\ndf <dl>Beispiel</dt>\n        <dd>\n          <ul class="note__list"><li>aus der Schusslinie gehen</li>\n     </dl>     </ul></dd>\n\n'
+# print(repr(text))
+# parts = re.split(r"(^[^\n]*?<dl(?: |>).*Beispiele?.*?</dl>)",text,flags=re.MULTILINE+re.DOTALL)
+# print(parts)
 lang="de"
 # word = "Haus"
 # word = "Estland"
-word = "hinwegsetzen"
+# word = "Betracht"
+word = "Schusslinie"
 whichWords = 1
 
 duden = getDudenStr(word)
 print(f"\n\nword:{word}")
 print(f"\n{duden}" if duden is None else f"\nmeanings\n{duden[0]}\n\nexamples\n{duden[1]}")
+
 # texts = getWiktionaryContents(word, whichWords=whichWords, lang=lang)
 # content = texts[word]
-# examples = getExamples(content)
-# print(examples)
+# meanings = getMeanings(content)
+# print(meanings)
 # main = getMainWord(word)
 # print(main)
 
