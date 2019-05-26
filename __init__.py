@@ -178,6 +178,8 @@ def onSetupMenus(self):
     self.m5.triggered.connect(lambda: partOfSpeech())
     self.m5 = menu.addAction("Make adjektivisch Part of Speech")
     self.m5.triggered.connect(lambda: adjektivischPartOfSpeech())
+    self.m13 = menu.addAction("Remove newline from def and examples")
+    self.m13.triggered.connect(lambda: remNewLine())
 
 def getDuden():
     noteidsall = bw.selectedNotes()
@@ -250,7 +252,7 @@ def getDudenExamples(examples):
     return examplelist
 
 def getGrammatik(text):
-    grammatik = re.findall("Grammatik</dt>\s*<dd [^>]*>(.*?)</dd>",text)
+    grammatik = re.findall(r"Grammatik</dt>\s*<dd [^>]*>(.*?)</dd>",text)
     if grammatik:
         return " | ".join(grammatik)
 
@@ -264,7 +266,7 @@ def parsediv(text, divtext):
         remaining = re.sub(r"<dl(?: |>)[^\n]*?Wendungen, Redensarten, Sprichwörter.*?</dl>","",remaining,flags=re.MULTILINE+re.DOTALL)
     # if not re.search("<li",remaining):
         parts = re.split(r"(<dl(?: |>)[^\n]*?Beispiele?.*?</dl>)",remaining,flags=re.MULTILINE+re.DOTALL)
-        stripped = re.sub("^\s+|\s+$|<p>|</p>","",parts[0],flags=re.MULTILINE)
+        stripped = re.sub(r"^\s+|\s+$|<p>|</p>","",parts[0],flags=re.MULTILINE)
         exampleslist = getDudenExamples("".join(parts[1:]))
         # print(stripped)
         return [[[stripped,exampleslist]]] if stripped else None
@@ -625,7 +627,7 @@ def removeWordFromDef(text, word):
 def newlinetobr(text):
     if text is None: return None
     # return re.sub(r"(\n|^)(.+)(?=\n)",r"\g<1><div>\g<2></div>",text)
-    return re.sub(r"\n",r"<br>\n",text)
+    return re.sub(r"\n",r"<br>",text)
 
 def getWordType(contents):
     x= re.search(r"=== (\{\{Wortart\|(.*?)\|Deutsch\}\}.*)",contents)
@@ -688,7 +690,7 @@ def getPlural(contents, wordtype, foreword=""):
 
 def addsich(word, foreword):
     if foreword != "sich": return word
-    return re.sub(f"^([^\s]+)",r"\g<1> sich", word, 1)
+    return re.sub(r"^([^\s]+)",r"\g<1> sich", word, 1)
         
 
 def splitMultDefs(contents, lang = "de"):
@@ -806,7 +808,23 @@ def getTranslation(contents, lang="en"):
     else:
         return None
 
-
+def remNewLine():
+    notes = bw.selectedNotes()
+    edited_N = 0
+    for k, n in enumerate(notes):
+        edited_card = False
+        obj = mw.col.getNote(n)
+        # showInfo(f"Keys: <{obj.keys()}>\ngerman: <{obj['German']}>\ngerman repr: <{repr(obj['German'])}>")
+        for field in {"Definition", "Sample sentence"}:
+            newtext = re.sub(r"\n", "", obj[field])
+            if newtext != obj[field]:
+                obj[field] = newtext
+                if not edited_card:
+                    edited_N +=1
+                    edited_card = True
+        obj.flush()
+    mw.reset()
+    showInfo("Worked on {} cards, removed newline in {} cards.".format(len(notes),edited_N))
 
 def nbsp_to_space():
     # bw = aqt.dialogs._dialogs['Browser'][1]
