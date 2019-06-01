@@ -111,21 +111,23 @@ def kreplacer(m):
 def curlyjoiner(m):
     return "<i>"+"".join(m.group(1).split("|"))+"</i>"
 def getMeanings(contents, word=None, hideWord=True):
+    if not contents: return None
     rawdata = re.search(r"\{\{Bedeutungen\}\}\s*(.*?)(?:\n\n|\n\{\{)", contents, flags=re.DOTALL)
     if not rawdata:
         return None
     rawdata = rawdata.group(1)
     replacements = {r"\[\[[^\]]*\|(?P<link>.*?)\]\]": "",
                     r"\[\[": "", r"\]\]": "", "''(?P<quote>.*?)''": "", r"(?P<ref><ref>.*?</ref>)": "",
-                    r":+\[(?P<start>.*?)\]": "", r"kPl\.": "kein Plural", r"kSt\.": "keine Steigerung"}
-    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"[\g<start>]", "ref": "", "link": r"\g<1>"}
-    rawdata = re.sub(r"\{\{K\|(.*?)\}\}", lambda x: kreplacer(x), rawdata)
-    rawdata = re.sub(r"\{\{(.*?)\}\}", lambda x: curlyjoiner(x), rawdata)
+                    r":+\[(?P<start>.*?)\]": "", r"kPl\.": "kein Plural", r"kSt\.": "keine Steigerung",
+                    r"(?P<QS>\{\{QS Bedeutungen\|.*?\}\})": ""}
+    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"[\g<start>]", "ref": "", "link": r"\g<1>", "QS": ""}
     if replacements:
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
-    if hideWord:
-        rawdata = rawdata.replace(word,"_")
+    rawdata = re.sub(r"\{\{K\|(.*?)\}\}", lambda x: kreplacer(x), rawdata)
+    rawdata = re.sub(r"\{\{(.*?)\}\}", lambda x: curlyjoiner(x), rawdata)
+    # if hideWord:
+    #     rawdata = rawdata.replace(word,"_")
     return rawdata
 
 def getExamples(contents):
@@ -389,7 +391,7 @@ def getDudenStr(word):
     word = re.sub("|".join(replacements.keys()),lambda x: replacerUmlaut(x,replacements),word)
     data = requests.get(f"https://www.duden.de/rechtschreibung/{word}").text
     if "Die Seite wurde nicht gefunden" in data: return None, None
-    sections = parsediv(data, '<div class="division "  id="bedeutung(?:en)?">')
+    sections = parsediv(data, '<div class="division " id="bedeutung(?:en)?">')
     if sections is None: return None, None
     meanings, examples = [], []
     for n, section in enumerate(sections):
@@ -411,17 +413,18 @@ lang="de"
 # word = "Haus"
 # word = "Estland"
 # word = "Betracht"
-word = "Schusslinie"
+word = "Anlass"
 whichWords = 1
 
-duden = getDudenStr(word)
-print(f"\n\nword:{word}")
-print(f"\n{duden}" if duden is None else f"\nmeanings\n{duden[0]}\n\nexamples\n{duden[1]}")
+# duden = getDudenStr(word)
+# print(f"\n\nword:{word}")
+# print(f"\n{duden}" if duden is None else f"\nmeanings\n{duden[0]}\n\nexamples\n{duden[1]}")
 
-# texts = getWiktionaryContents(word, whichWords=whichWords, lang=lang)
-# content = texts[word]
-# meanings = getMeanings(content)
-# print(meanings)
+
+texts = getWiktionaryContents(word, whichWords=whichWords, lang=lang)
+content = texts[word]
+meanings = getMeanings(content)
+print(meanings)
 # main = getMainWord(word)
 # print(main)
 

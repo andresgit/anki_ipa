@@ -13,6 +13,7 @@ import json
 from bs4 import BeautifulSoup
 import os
 import sys
+import datetime
 from collections import deque
 ##from threading import Thread
 
@@ -102,84 +103,99 @@ def onSetupMenus(self):
     """Setup menu entries and hotkeys"""
     global bw
     bw = self
-    self.menuView = stayMenu(_("&IPA"))
-    self.menuGender = stayMenu(_("&Gender"))
-    self.menuWiktionary = stayMenu(_("&Wiktionary"))
-    self.menuDuden = stayMenu(_("&Duden"))
-    self.menuMisc = stayMenu(_("&Misc"))
-    self.menuBar().insertMenu(
-        self.mw.form.menuTools.menuAction(), self.menuView)
-    self.menuBar().insertMenu(
-        self.mw.form.menuTools.menuAction(), self.menuGender)
-    self.menuBar().insertMenu(
-        self.mw.form.menuTools.menuAction(), self.menuWiktionary)
-    self.menuBar().insertMenu(
-        self.mw.form.menuTools.menuAction(), self.menuDuden)
-    self.menuBar().insertMenu(
-        self.mw.form.menuTools.menuAction(), self.menuMisc)
-    menu = self.menuView
-    self.a1 = menu.addAction("Get")
-    self.a1.triggered.connect(lambda: testFunction())
-    self.a2 = menu.addAction("Overwrite")
-    self.a2.setCheckable(True)
-    self.a2.setChecked(False)
-    self.a3 = menu.addAction("Overwrite if there are variants")
-    self.a3.setCheckable(True)
-    self.a3.setChecked(False)
-    self.a4 = menu.addAction("Check English Wiki if no German")
-    self.a4.setCheckable(True)
-    self.a4.setChecked(True)
-    self.a5 = menu.addAction("Clear IPA")
-    self.a5.triggered.connect(lambda: clearIPA("IPA"))
-    self.a6 = menu.addAction("Clear IPA Plural")
-    self.a6.triggered.connect(lambda: clearIPA("IPA Plural"))
+    bw.menuIPA = stayMenu(_("&IPA"))
+    bw.menuGender = stayMenu(_("&Gender"))
+    bw.menuWiktionary = stayMenu(_("&Wiktionary"))
+    bw.menuDuden = stayMenu(_("&Duden"))
+    bw.menuMisc = stayMenu(_("&Misc"))
+    bw.menuBar().insertMenu(
+        bw.mw.form.menuTools.menuAction(), bw.menuIPA)
+    bw.menuBar().insertMenu(
+        bw.mw.form.menuTools.menuAction(), bw.menuGender)
+    bw.menuBar().insertMenu(
+        bw.mw.form.menuTools.menuAction(), bw.menuWiktionary)
+    bw.menuBar().insertMenu(
+        bw.mw.form.menuTools.menuAction(), bw.menuDuden)
+    bw.menuBar().insertMenu(
+        bw.mw.form.menuTools.menuAction(), bw.menuMisc)
+    menu = bw.menuIPA
+    bw.menuIPA.Get = menu.addAction("Get")
+    bw.menuIPA.Get.triggered.connect(lambda: testFunction())
+    bw.menuIPA.Ow = menu.addAction("Overwrite")
+    bw.menuIPA.Ow.setCheckable(True)
+    bw.menuIPA.Ow.setChecked(False)
+    bw.menuIPA.Owiv = menu.addAction("Overwrite if there are variants")
+    bw.menuIPA.Owiv.setCheckable(True)
+    bw.menuIPA.Owiv.setChecked(False)
+    bw.menuIPA.CheckEng = menu.addAction("Check English Wiki if no German")
+    bw.menuIPA.CheckEng.setCheckable(True)
+    bw.menuIPA.CheckEng.setChecked(True)
+    bw.menuIPA.Clear = menu.addAction("Clear IPA")
+    bw.menuIPA.Clear.triggered.connect(lambda: clearIPA("IPA"))
+    bw.menuIPA.ClearPl = menu.addAction("Clear IPA Plural")
+    bw.menuIPA.ClearPl.triggered.connect(lambda: clearIPA("IPA Plural"))
 
-    menu = self.menuGender
-    self.g1 = menu.addAction("Add gender colors")
-    self.g1.triggered.connect(lambda: colorGender(remove=False))
-    self.g2 = menu.addAction("Remove gender colors")
-    self.g2.triggered.connect(lambda: colorGender(remove=True))
+    menu = bw.menuGender
+    bw.menuGender.Add = menu.addAction("Add gender colors")
+    bw.menuGender.Add.triggered.connect(lambda: colorGender(remove=False))
+    bw.menuGender.Remove = menu.addAction("Remove gender colors")
+    bw.menuGender.Remove.triggered.connect(lambda: colorGender(remove=True))
     
-    menu = self.menuWiktionary
-    self.m2 = menu.addAction("Get from Wiktionary")
-    self.m2.triggered.connect(lambda: getWiktionary())
-    self.m3 = menu.addAction("Overwrite from Wiktionary")
-    self.m3.setCheckable(True)
-    self.m3.setChecked(False)
-    self.m6 = menu.addAction("Overwrite German from Wiktionary")
-    self.m6.setCheckable(True)
-    self.m6.setChecked(False)
-    self.m4 = menu.addAction("Add from file")
-    self.m4.triggered.connect(lambda: addFromFile())
-    self.m7 = menu.addAction("Overwrite definitions if they exist")
-    self.m7.setCheckable(True)
-    self.m7.setChecked(False)
-    self.m8 = menu.addAction("Overwrite examples if they exist")
-    self.m8.setCheckable(True)
-    self.m8.setChecked(False)
-    self.m9 = menu.addAction("Overwrite plurals if they exist")
-    self.m9.setCheckable(True)
-    self.m9.setChecked(False)
+    menu = bw.menuWiktionary
+    bw.menuWiktionary.Get = menu.addAction("Get from Wiktionary")
+    bw.menuWiktionary.Get.triggered.connect(lambda: getWiktionary())
+    bw.menuWiktionary.Ow = menu.addAction("Overwrite from Wiktionary")
+    bw.menuWiktionary.Ow.setCheckable(True)
+    bw.menuWiktionary.Ow.setChecked(False)
+    bw.menuWiktionary.OwGerman = menu.addAction("Overwrite German from Wiktionary")
+    bw.menuWiktionary.OwGerman.setCheckable(True)
+    bw.menuWiktionary.OwGerman.setChecked(False)
+    bw.menuWiktionary.FromFile = menu.addAction("Add from file")
+    bw.menuWiktionary.FromFile.triggered.connect(lambda: addFromFile())
+    bw.menuWiktionary.Owdefif = menu.addAction("Overwrite definitions if they exist")
+    bw.menuWiktionary.Owdefif.setCheckable(True)
+    bw.menuWiktionary.Owdefif.setChecked(False)
+    bw.menuWiktionary.Owexif = menu.addAction("Overwrite examples if they exist")
+    bw.menuWiktionary.Owexif.setCheckable(True)
+    bw.menuWiktionary.Owexif.setChecked(False)
+    bw.menuWiktionary.Owplif = menu.addAction("Overwrite plurals if they exist")
+    bw.menuWiktionary.Owplif.setCheckable(True)
+    bw.menuWiktionary.Owplif.setChecked(False)
+    bw.menuWiktionary.OwIPA = menu.addAction("Overwrite IPA")
+    bw.menuWiktionary.OwIPA.setCheckable(True)
+    bw.menuWiktionary.OwIPA.setChecked(False)
+    bw.menuWiktionary.OwIPAifvar = menu.addAction("Overwrite IPA if var")
+    bw.menuWiktionary.OwIPAifvar.setCheckable(True)
+    bw.menuWiktionary.OwIPAifvar.setChecked(False)
 
-    menu = self.menuDuden
-    self.m10 = menu.addAction("Overwrite definitions if they exist")
-    self.m10.setCheckable(True)
-    self.m10.setChecked(False)
-    self.m11 = menu.addAction("Overwrite examples if they exist")
-    self.m11.setCheckable(True)
-    self.m11.setChecked(False)
-    self.m12 = menu.addAction("Get from Duden")
-    self.m12.triggered.connect(lambda: getDuden())
+    menu = bw.menuDuden
+    bw.menuDuden.Owdefif = menu.addAction("Overwrite definitions if they exist")
+    bw.menuDuden.Owdefif.setCheckable(True)
+    bw.menuDuden.Owdefif.setChecked(False)
+    bw.menuDuden.Owexif = menu.addAction("Overwrite examples if they exist")
+    bw.menuDuden.Owexif.setCheckable(True)
+    bw.menuDuden.Owexif.setChecked(False)
+    bw.menuDuden.Get = menu.addAction("Get from Duden")
+    bw.menuDuden.Get.triggered.connect(lambda: getDuden())
 
-    menu = self.menuMisc
-    self.m1 = menu.addAction("nbsp to space")
-    self.m1.triggered.connect(lambda: nbsp_to_space())
-    self.m5 = menu.addAction("To German Part of Speech")
-    self.m5.triggered.connect(lambda: partOfSpeech())
-    self.m5 = menu.addAction("Make adjektivisch Part of Speech")
-    self.m5.triggered.connect(lambda: adjektivischPartOfSpeech())
-    self.m13 = menu.addAction("Remove newline from def and examples")
-    self.m13.triggered.connect(lambda: remNewLine())
+    menu = bw.menuMisc
+    bw.menuMisc.nbsp = menu.addAction("nbsp to space")
+    bw.menuMisc.nbsp.triggered.connect(lambda: nbsp_to_space())
+    bw.menuMisc.PoStoG = menu.addAction("To German Part of Speech")
+    bw.menuMisc.PoStoG.triggered.connect(lambda: partOfSpeech())
+    bw.menuMisc.adjsch = menu.addAction("Make adjektivisch Part of Speech")
+    bw.menuMisc.adjsch.triggered.connect(lambda: adjektivischPartOfSpeech())
+    bw.menuMisc.remnldefex = menu.addAction("Remove newline from def and examples")
+    bw.menuMisc.remnldefex.triggered.connect(lambda: remNewLine())
+    bw.menuMisc.remdotsp = menu.addAction('Remove ", " from plurals')
+    bw.menuMisc.remdotsp.triggered.connect(lambda: remDotSpace())
+    bw.menuMisc.sephint = menu.addAction("Put hint separately")
+    bw.menuMisc.sephint.triggered.connect(lambda: None)
+    bw.menuMisc.checkgender = menu.addAction("Check German and Plural")
+    bw.menuMisc.checkgender.triggered.connect(lambda: checkGermanPlural())
+
+def checkGermanPlural():
+    pass
 
 def getDuden():
     noteidsall = bw.selectedNotes()
@@ -192,18 +208,16 @@ def getDuden():
         try:
             foreword, mainword = getMainWord(word)
             meanings, examples = getDudenStr(mainword)
+            meanings = removeWordFromDef(meanings,mainword)
             tag = "nodudendef"
             if not (meanings or examples):
                 missedwords.append(word)
-                if tag not in note.tags:
-                    note.tags.append(tag)
-                    note.flush()
+                addTag(note,"nodudendef", True)
                 continue
-            if tag in note.tags:
-                note.tags.remove(tag)
+            remTag(note,"nodudendef",True)
             # showInfo(f"mainword {mainword}\nmeanings\n{meanings}\n\nexamples\n{examples}")
-            for field, value, extraCheck in (("Definition", newlinetobr(meanings),bw.m10.isChecked()),
-                                            ("Sample sentence", newlinetobr(examples), bw.m11.isChecked())):
+            for field, value, extraCheck in (("Definition", newlinetobr(meanings),bw.menuDuden.Owdefif.isChecked()),
+                                            ("Sample sentence", newlinetobr(examples), bw.menuDuden.Owexif.isChecked())):
                 if value and (not note[field] or extraCheck):
                     note[field] = value
                     note.flush()
@@ -302,7 +316,7 @@ def getDudenStr(word):
     word = re.sub("|".join(replacements.keys()),lambda x: replacerUmlaut(x,replacements),word)
     data = requests.get(f"https://www.duden.de/rechtschreibung/{word}").text
     if "Die Seite wurde nicht gefunden" in data: return None, None
-    sections = parsediv(data, '<div class="division "  id="bedeutung(?:en)?">')
+    sections = parsediv(data, '<div class="division " id="bedeutung(?:en)?">')
     if sections is None: return None, None
     meanings, examples = [], []
     for n, section in enumerate(sections):
@@ -356,7 +370,7 @@ def partOfSpeech():
             note.flush()
     mw.reset()
 
-def addAllIpas(notes, overwrite=False):
+def addAllIpas(notes, overwrite=False, overwriteifvar=False):
     wordstoget = set()
     jobs = deque()
     fields = {"German": "IPA", "Plural and inflected forms": "IPA Plural"}
@@ -364,7 +378,7 @@ def addAllIpas(notes, overwrite=False):
     for m, note in enumerate(notes):
         setToolText(f"{'IPA Started with:':<20} {m+1}/{len(notes)}")
         # print(f"m of note: {m}")
-        jobs.append([note,1,[]])
+        jobs.append([note,1,[],[overwriteifvar,False]]) #note, ready, components, found variable name?
         for field in fields:
             breakdowns = jobs[-1][2]
             breakdowns.append([])
@@ -412,10 +426,11 @@ def processIPAs(jobs, ipas, fields, checkEnglish=True, overwrite=False):
                         el[1] = getIPA2(el[1], lang="en")[el[1]]
                     else:
                         el[1] = ipa
+                    if job[3][0] and checkvariants(el[1]): job[3][1]=True
                 # print(f"el end {el}")
             # print(f"breakdown {breakdown}\nconnected {list(zip(*breakdown))}\nstring {''.join(list(zip(*breakdown))[1])}")
             # job[0]["IPA"]="1"
-            if job[1]==0 and (not job[0][field] or overwrite) and breakdown:
+            if job[1]==0 and (not job[0][field] or overwrite or job[3][0] and job[3][1]) and breakdown:
                 job[0][field]="".join(list(zip(*breakdown))[1])
             # job[0]["IPA Plural"]="2"
             # showInfo(f"job[0]: {job[0]}\ngerman: {job[0]['German']}\nfield: {field}\nvalue: {''.join(list(zip(*breakdown))[1])}")
@@ -425,19 +440,23 @@ def processIPAs(jobs, ipas, fields, checkEnglish=True, overwrite=False):
     while jobs and jobs[0] is None:
         jobs.popleft()
 
-
+def checkvariants(ipa):
+    nobr = re.sub(r"\[.*?\]","",ipa)
+    return True if nobr.count("[") > 1 else False
 
 def addFromFile():
     setToolText("Starting to add files from the file")
-    file = open(os.path.expanduser("~/Desktop/ankiaddwords.txt"))
-    fileContents = file.read()
-    file.close()
+    with open(os.path.expanduser("~/Desktop/ankiaddwords.txt")) as file:
+        fileContents = file.read()
     addwords, forewords, mainwords = [], [], []
     missedwords = []
+    existingwords = []
     notes = []
     setToolText(f"Reading in the file.")
     for line in fileContents.splitlines():
-        word = re.search(r"^[^\d()]*", line).group(0)
+        if re.match(r"\s*#", line):
+            continue
+        word = re.search(r"^\s*[^\d()]*", line).group(0)
         number = re.search(r"\d+", line)
         hint = re.search(r"\(.*\)", line)
         foreword, mainword = getMainWord(word.strip())
@@ -460,19 +479,22 @@ def addFromFile():
             
             wordType = getWordType(content)
             plurals = getPlural(content, wordType)
-            meanings = getMeanings(content, word=mainword) + (f" {hint}" if hint else "")
+            meanings = getMeanings(content, word=mainword)
+            # if hint and meanings: meanings += f" {hint}"
+            meanings = removeWordFromDef(meanings, mainword)
             examples = getExamples(content)
             english = getTranslation(content, lang="en")
             estonian = getTranslation(content, lang="et")
             newgerman = plurals[0] if wordType=="Substantiv" else word
             plural = ("no plural" if not plurals[1] else f"die {plurals[1]}") if wordType=="Substantiv" else plurals
-            newgermanc = coloredName(newgerman,word)
-            pluralc = coloredName(plural,word)
+            newgermanc = coloredName(newgerman,newgerman)
+            pluralc = coloredName(plural,newgerman)
             search = f"deck:current German:'{coloredName(newgerman,newgerman)}'"
             ids = mw.col.findCards(search)
             if not ids:
                 note = mw.col.newNote()
-                if content is None: addTag(note,"nowikidef")
+                if content is None:
+                    addTag(note,"nowikidef")
                 if meanings is None:
                     missedwords.append(word)
                     addTag(note,"nowikimeaning")
@@ -481,16 +503,36 @@ def addFromFile():
                                 ("Definition", newlinetobr(meanings)), 
                                 ("Part of Speech", wordType),
                                 ("Sample sentence", newlinetobr(examples)), 
-                                ("English", english), ("Estonian", estonian)):
+                                ("English", english),
+                                ("Estonian", estonian),
+                                ("Wiktionary English", english)):
                     if value:
                         note[field] = value
+                        # showInfo(f"Adding for {word} field {field} value {value}")
                 mw.col.addNote(note)
-                notes.append(note)
+                if content: notes.append(note)
+            else:
+                existingwords.append(word)
     setToolText(f"Starting to work on IPA")
     addAllIpas(notes)
     closeTooltip()
-    if len(missedwords): showInfo(f"Missed words: {', '.join(missedwords)}", parent=bw)
-    else: showInfo(f"Added from file {len(addwords)} cards", parent=bw)
+    showtext = []
+    if len(missedwords): showtext.append(f"Missed words: {', '.join(missedwords)}")
+    if len(existingwords): showtext.append(f"Already existing words: {', '.join(existingwords)}")
+    if showtext:
+        showInfo("\n\n".join(showtext), parent=bw)
+        with open(os.path.expanduser("~/Desktop/ankiaddwords.txt"),mode="w") as file:
+            file.write(f"### {datetime.datetime.now().strftime('%d.%m.%y %H:%M:%S')}\n")
+            texts = []
+            for words, text in (missedwords, "Missed words:"), (existingwords, "Existing words:"):
+                if not words: continue
+                texts.append("")
+                texts[-1]+= f"# {text}\n"
+                for word in words: texts[-1]+=f"# {word}\n"
+            file.write("#\n".join(texts))
+            file.write(f"#\n{fileContents}")
+    else:
+        showInfo(f"Added from file {len(addwords)} cards", parent=bw)
     mw.reset()
     # showInfo(f"german: {german}\nnewgerman: {newgerman}\nsearch: {search}\nids: {ids}")
 
@@ -505,7 +547,7 @@ def remTag(note,tag, flush=False):
         note.tags.remove(tag)
     if flush and removed: note.flush()
 def getWiktionary(notes=None, overwrite=False):
-    overwrite = bw.m3.isChecked()
+    overwrite = bw.menuWiktionary.Ow.isChecked()
     noteidsall = bw.selectedNotes()
     notesall, missedwords = [], []
     digits = len(str(len(noteidsall)))
@@ -541,11 +583,11 @@ def getWiktionary(notes=None, overwrite=False):
             ind = 50*n+k
             setToolText(f"{'Working on word number':<25} {ind+1:>{digits}}/{len(noteidsall)}")
             content = contents[word]
-            content = contents[word]
             tag = "nowikidef"
             if content is None:
                 missedwords.append(word)
-                addTag(note,tag,True)
+                addTag(note,tag,False)
+                addTag(note,"nowikimeaning",True)
                 continue
             remTag(note,tag)
             try:
@@ -569,12 +611,13 @@ def getWiktionary(notes=None, overwrite=False):
                 pluralc = coloredName(plural,newgerman)
 
                 for params in (("German", newgermanc),
-                                ("Plural and inflected forms", pluralc, plural and bw.m9.isChecked() and re.search(r"[^\s\d\[\]]{2,}",plural)),
-                                ("Definition", newlinetobr(meanings), meanings and bw.m7.isChecked() and re.search(r"[^\s\d\[\]]{2,}",meanings)),
+                                ("Plural and inflected forms", pluralc, plural and bw.menuWiktionary.Owplif.isChecked() and re.search(r"[^\s\d\[\]]{2,}",plural)),
+                                ("Definition", newlinetobr(meanings), meanings and bw.menuWiktionary.Owdefif.isChecked() and re.search(r"[^\s\d\[\]]{2,}",meanings)),
                                 ("Part of Speech", wordType),
-                                ("Sample sentence", newlinetobr(examples), examples and bw.m8.isChecked() and re.search(r"[^\s\d\[\]]{2,}",examples)),
+                                ("Sample sentence", newlinetobr(examples), examples and bw.menuWiktionary.Owexif.isChecked() and re.search(r"[^\s\d\[\]]{2,}",examples)),
                                 ("English", english),
-                                ("Estonian", estonian)):
+                                ("Estonian", estonian, True),
+                                ("Wiktionary English", english, True)):
                     if len(params)==2:
                         field, value = params
                         checkTest = False
@@ -592,7 +635,9 @@ def getWiktionary(notes=None, overwrite=False):
             # showInfo("\n".join(t))
             note.flush()
     setToolText(f"Starting to work on IPA")
-    addAllIpas(notesall, overwrite=overwrite)
+    addAllIpas(notesall, overwrite=(overwrite or bw.menuWiktionary.OwIPA.isChecked()), overwriteifvar=bw.menuWiktionary.OwIPAifvar.isChecked())
+    bw.menuWiktionary.OwIPA.isChecked()
+    bw.menuWiktionary.OwIPAifvar.isChecked()
     closeTooltip()
     if len(missedwords): showInfo(f"Missed words: {', '.join(missedwords)}", parent=bw)
     else: showInfo("Inserted data from Wiktionary for {} cards.".format(len(noteidsall)), parent=bw)
@@ -622,7 +667,7 @@ def getMainWord(german):
 
 def removeWordFromDef(text, word):
     if not text: return text
-    return re.sub(word,"",text,flags=re.IGNORECASE)
+    return re.sub(r"(?:(?<=\W)|(?<=^))"+f"{word}|{word}"+r"(?=$|\W)","_",text,flags=re.IGNORECASE)
 
 def newlinetobr(text):
     if text is None: return None
@@ -630,6 +675,7 @@ def newlinetobr(text):
     return re.sub(r"\n",r"<br>",text)
 
 def getWordType(contents):
+    if not contents: return None
     x= re.search(r"=== (\{\{Wortart\|(.*?)\|Deutsch\}\}.*)",contents)
     if not x: return None
     return f"{x.group(2)} adjektivisch" if "adjektivische Deklination" in x.group(1) else x.group(2)
@@ -638,6 +684,7 @@ articles = {"m": "der", "f": "die", "n": "das"}
 def joinPlural(els):
     return ", ".join([el if isinstance(el,str) else ", ".join(el if len(el)==1 else ["("+ ", ".join(el) +")"]) for el in els])
 def getPlural(contents, wordtype, foreword=""):
+    if not contents: return None
     if wordtype=="Substantiv adjektivisch":
         table = re.search(r"\{\{Deutsch adjektivisch Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
         stamms = re.findall(r"\|Stamm.*?=(\w*)",table)
@@ -731,24 +778,27 @@ def kreplacer(m):
 def curlyjoiner(m):
     return "<i>"+"".join(m.group(1).split("|"))+"</i>"
 def getMeanings(contents, word=None, hideWord=True):
+    if not contents: return None
     rawdata = re.search(r"\{\{Bedeutungen\}\}\s*(.*?)(?:\n\n|\n\{\{)", contents, flags=re.DOTALL)
     if not rawdata:
         return None
     rawdata = rawdata.group(1)
     replacements = {r"\[\[[^\]]*\|(?P<link>.*?)\]\]": "",
                     r"\[\[": "", r"\]\]": "", "''(?P<quote>.*?)''": "", r"(?P<ref><ref>.*?</ref>)": "",
-                    r":+\[(?P<start>.*?)\]": "", r"kPl\.": "kein Plural", r"kSt\.": "keine Steigerung"}
-    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"[\g<start>]", "ref": "", "link": r"\g<1>"}
-    rawdata = re.sub(r"\{\{K\|(.*?)\}\}", lambda x: kreplacer(x), rawdata)
-    rawdata = re.sub(r"\{\{(.*?)\}\}", lambda x: curlyjoiner(x), rawdata)
+                    r":+\[(?P<start>.*?)\]": "", r"kPl\.": "kein Plural", r"kSt\.": "keine Steigerung",
+                    r"(?P<QS>\{\{QS Bedeutungen\|.*?\}\})": ""}
+    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"[\g<start>]", "ref": "", "link": r"\g<1>", "QS": ""}
     if replacements:
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
-    if hideWord:
-        rawdata = rawdata.replace(word,"_")
+    rawdata = re.sub(r"\{\{K\|(.*?)\}\}", lambda x: kreplacer(x), rawdata)
+    rawdata = re.sub(r"\{\{(.*?)\}\}", lambda x: curlyjoiner(x), rawdata)
+    # if hideWord:
+    #     rawdata = rawdata.replace(word,"_")
     return rawdata
 
 def getExamples(contents):
+    if not contents: return None
     rawdata = re.search(r"\{\{Beispiele\}\}\s*(.*?)(?:\n\n|\n\{\{)", contents, flags=re.DOTALL)
     if not rawdata:
         return None
@@ -799,12 +849,17 @@ def getIPA2contentsen(contents):
     else:
         return ", ".join(ipas)
 
+def checkTranslationNotEmpty(translation):
+    nobrackets = re.sub(r"\[.*?\]","",translation)
+    return translation if re.search(r"\w+",nobrackets) else None
+
 def getTranslation(contents, lang="en"):
+    if not contents: return None
     rawdata = re.search(r"\*\{\{"+lang+r"}\}:\s*(.*)", contents)
     if rawdata:
         rawdata = rawdata.group(1)
         rawdata = re.sub(r"\{\{Ü\|"+lang+r"\|(.*?)\}\}", r"\g<1>", rawdata)
-        return rawdata
+        return checkTranslationNotEmpty(rawdata)
     else:
         return None
 
@@ -823,6 +878,24 @@ def remNewLine():
                     edited_N +=1
                     edited_card = True
         obj.flush()
+    mw.reset()
+    showInfo("Worked on {} cards, removed newline in {} cards.".format(len(notes),edited_N))
+
+def remDotSpace():
+    notes = bw.selectedNotes()
+    edited_N = 0
+    for k, n in enumerate(notes):
+        edited_card = False
+        obj = mw.col.getNote(n)
+        # showInfo(f"Keys: <{obj.keys()}>\ngerman: <{obj['German']}>\ngerman repr: <{repr(obj['German'])}>")
+        for field in {"Plural and inflected forms", "IPA Plural"}:
+            if obj[field] == ", ":
+                obj[field] = ""
+                if not edited_card:
+                    edited_N +=1
+                    edited_card = True
+        if edited_card:
+            obj.flush()
     mw.reset()
     showInfo("Worked on {} cards, removed newline in {} cards.".format(len(notes),edited_N))
 
@@ -938,9 +1011,9 @@ def testFunction(notes = None, endInfo=True):
     Nsize = len(notes)
     setToolText("Starting to work on IPAs.")
 
-    overwrite = bw.a2.isChecked()
-    overwriteIfVar = bw.a3.isChecked()
-    checkEnglishIfNone = bw.a4.isChecked()
+    overwrite = bw.menuIPA.Ow.isChecked()
+    overwriteIfVar = bw.IPAOwifvar.isChecked()
+    checkEnglishIfNone = bw.IPACheckEng.isChecked()
 ##    showInfo("{}, {}, {}".format(overwrite, overwriteIfVar, checkEnglishIfNone))
 ##    displayData(notes[0])
 ##    return
