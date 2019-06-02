@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 import json
 import os
 from collections import deque
+import sys
 
 text = """[1] „Ob eine Äußerung noch Satire oder bereits ein <i>Hasskommentar</i> sei, dürfe nicht privaten Betreibern überlassen werden. Dies müsse der Rechtsstaat entscheiden.“
 [1] „Im Rahmen eines Aktionstages gegen <i>Hasskommentare</i> im Internet, koordiniert durch das Bundeskriminalamt, hat die Itzehoer Bezirkskriminalinspektion am Dienstagmorgen eine Wohnung in Wedel durchsucht.“
@@ -23,23 +24,26 @@ def getWordType(contents):
 articles = {"m": "der", "f": "die", "n": "das"}
 def joinPlural(els):
     return ", ".join([el if isinstance(el,str) else ", ".join(el if len(el)==1 else ["("+ ", ".join(el) +")"]) for el in els])
-def getPlural(contents, wordtype, foreword=None):
+def getPlural(contents, wordtype, foreword=""):
+    if not contents: return None
     if wordtype=="Substantiv adjektivisch":
         table = re.search(r"\{\{Deutsch adjektivisch Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
-        stamms = re.findall(r"\|Stamm.*?=(\w*)",table)
+        stamms = re.findall(r"\|Stamm.*?=\s*(\w*)",table)
         stamm = ""
         for n, x in enumerate(stamms):
             stamm += (("" if n==0 else "/") + f"{x}") if x not in stamms[:n] else ""
         return f"der {stamm}", stamm.replace("/","n/")+"n"
     elif wordtype=="Substantiv":
+        if re.search(r"\{\{Deutsch Toponym Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL):
+            return f"(das) {getWordFromContents(contents)}", None
         table = re.search(r"\{\{Deutsch (?:Substantiv|Name) Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
         genders = re.findall(r"\|Genus.*?=(\w*)",table)
         
-        singulars = re.findall(r"\|Nominativ Singular.*?=(\w*)",table)
+        singulars = re.findall(r"\|Nominativ Singular.*?=\s*(\w*)",table)
         singular = ""
         for n, x in enumerate(singulars):
             singular += (("" if n==0 else "/") + f"{x}") if x not in singulars[:n] else ""
-        plurals = re.findall(r"\|Nominativ Plural.*?=(\w*)",table)
+        plurals = re.findall(r"\|Nominativ Plural.*?=\s*(\w*)",table)
         plural = ""
 
         if len(genders)==1 and genders[0] not in articles:
@@ -55,9 +59,8 @@ def getPlural(contents, wordtype, foreword=None):
         if not table:
             return None
         table = table.group(1)
-        komp = re.findall(r"\|Komparativ.*?=(\w*)",table)
-        sup = re.findall(r"\|Superlativ.*?=(\w*)",table)
-        print(komp,sup, komp or sup)
+        komp = re.findall(r"\|Komparativ.*?=\s*(\w*)",table)
+        sup = re.findall(r"\|Superlativ.*?=\s*(\w*)",table)
         if not ("".join(komp) or "".join(sup)):
             return None
         return joinPlural([komp,sup])
@@ -72,6 +75,9 @@ def getPlural(contents, wordtype, foreword=None):
         return joinPlural([präsens, präteritum, addsichlambda(hilfverb+" " + joinPlural([partizip]))])
     else:
         return None
+
+def getWordFromContents(contents):
+    return re.search(r"==\s*((?:\w|\w-)+)\s*.*?==",contents).group(1)
 
 def splitMultDefs(contents, lang = "de"):
     if contents is None: return None
@@ -130,6 +136,24 @@ def getMeanings(contents, word=None, hideWord=True):
     #     rawdata = rawdata.replace(word,"_")
     return rawdata
 
+def getAnmerkung(contents):
+    if not contents: return None
+    rawdata = re.search(r"\{\{Anmerkung[^\n]*?\}\}\s*(.*?)(?:\n\n|\n\{\{)", contents, flags=re.DOTALL)
+    if not rawdata:
+        return None
+    rawdata = rawdata.group(1)
+    replacements = {r"\[\[[^\]]*\|(?P<link>.*?)\]\]": "",
+                    r"\[\[": "", r"\]\]": "", "''(?P<quote>.*?)''": "", r"(?P<ref><ref>.*?</ref>)": "",
+                    r"(?P<colon>^:+)": "", r"kPl\.": "kein Plural", r"kSt\.": "keine Steigerung",
+                    r"(?P<QS>\{\{QS Bedeutungen\|.*?\}\})": ""}
+    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"[\g<start>]", "ref": "", "link": r"\g<1>", "QS": "", "colon": ""}
+    if replacements:
+        rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
+        rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
+    rawdata = re.sub(r"\{\{K\|(.*?)\}\}", lambda x: kreplacer(x), rawdata)
+    rawdata = re.sub(r"\{\{(.*?)\}\}", lambda x: curlyjoiner(x), rawdata)
+    return rawdata
+
 def getExamples(contents):
     rawdata = re.search(r"\{\{Beispiele\}\}\s*(.*?)(?:\n\n|\n\{\{)", contents, flags=re.DOTALL)
     if not rawdata:
@@ -158,38 +182,63 @@ def addFromFile():
 def getIPA2(words, lang="de"):
     contentsf = {"de": getIPA2contents, "en": getIPA2contentsen}
     if isinstance(words,str): words = [words]
-    contents = getWiktionaryContents(words, lang=lang)
-    return {word: "[.]" if contents[word] is None else contentsf[lang](contents[word]) for word in words}
+    contents = getWiktionaryContents(words, lang=lang, getAllDefs=True)
+    return {word: contentsf[lang](contents[word]) if contentsf[lang](contents[word]) else "[.]" for word in words}
 
 def getIPA2contents(contents):
-    word = re.search(r"==\s*(\w+)\s*.*?==",contents)
-    print(f"\ncontents2 {repr(contents)}")
-    word=word.group(1)
-    rawdata = re.search(r"\{\{IPA\}\}\s*(.*)\s*", contents).group(1)
-    replacements = {"''(?P<quote>.*?)''": "", r"\{\{Lautschrift\|(?P<laut>.*?)\}\}": "", r"(?P<ref><ref>.*?</ref>)": "",
-        r"\[\[": "", r"\]\]": "",}
-    namedgroups = {"quote": r"<i>\g<quote></i>", "ref": "", "laut": r"[\g<laut>]"}
-    if replacements:
-        rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
-        rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
-    if word in ["der","ist","sich","ich","du","er","ihr"]:
-        rawdata = rawdata.split("]")[0]+"]"
-    if re.search(r"\]\S+", rawdata):
-        rawdata = f"({rawdata})"
-    return rawdata
+    try:
+        if contents is None: return None
+        if isinstance(contents,list):
+            newcontents = None
+            for content in contents:
+                if re.search(r"\{\{IPA\}\}\s*(.*)\s*", content):
+                    newcontents = content
+                    break
+            if newcontents is None: return None
+            contents = newcontents
+        word = re.search(r"==\s*(\w+)\s*.*?==",contents)
+        word=word.group(1)
+        rawdata = re.search(r"\{\{IPA\}\}\s*(.*)\s*", contents).group(1)
+        replacements = {r"''(?P<quote>.*?)''": "", r"\{\{Lautschrift\|(?P<laut>.*?)\}\}": "", r"(?P<ref><ref>.*?</ref>)": "",
+            r"\[\[": "", r"\]\]": "",}
+        namedgroups = {"quote": r"<i>\g<quote></i>", "ref": "", "laut": r"[\g<laut>]"}
+        if replacements:
+            rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
+            rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
+        if word in ["der","ist","sich","ich","du","er","ihr"]:
+            rawdata = rawdata.split("]")[0]+"]"
+        if re.search(r"\]\S+", rawdata):
+            rawdata = f"({rawdata})"
+        return rawdata
+    except Exception as e:
+        sys.stderr.write(f"Failed getIPA2contents() for contents\n{contents}")
+        raise
 
 def getIPA2contentsen(contents):
-    rawdata = re.findall(r".*\{\{IPA\|(.*?)\|lang=de\}\}[ ]*(.*)", contents)
-    ipas = []
-    for ipa in rawdata:
-        s = ipa[0].split("|")
-        a = re.sub(r"\{\{a\|(.*?)\}\}",r"\g<1>",ipa[1]) if ipa[1] else ""
-        if len(s) > 1 or ipa[1]:
-            ipas.append("("+", ".join(s)+(f" {a}" if a else "")+")")
-    if len(ipas) > 1:
-        return "("+", ".join(ipas)+")"
-    else:
-        return ", ".join(ipas)
+    try:
+        if contents is None: return None
+        if isinstance(contents,list):
+            newcontents = None
+            for content in contents:
+                if re.search(r"\{\{IPA\}\}\s*(.*)\s*", content):
+                    newcontents = content
+                    break
+            if newcontents is None: return None
+            contents = newcontents
+        rawdata = re.findall(r".*\{\{IPA\|(.*?)\|lang=de\}\}[ ]*(.*)", contents)
+        ipas = []
+        for ipa in rawdata:
+            s = ipa[0].split("|")
+            a = re.sub(r"\{\{a\|(.*?)\}\}",r"\g<1>",ipa[1]) if ipa[1] else ""
+            if len(s) > 1 or ipa[1]:
+                ipas.append("("+", ".join(s)+(f" {a}" if a else "")+")")
+        if len(ipas) > 1:
+            return "("+", ".join(ipas)+")"
+        else:
+            return ", ".join(ipas)
+    except Exception as e:
+        sys.stderr.write(f"Failed getIPA2contents() for contents\n{contents}")
+        raise
 
 def getTranslation(contents, lang="en"):
     rawdata = re.search(r"\*\{\{"+lang+r"}\}:\s*(.*)", contents)
@@ -200,7 +249,7 @@ def getTranslation(contents, lang="en"):
     else:
         return None
 
-def getWiktionaryContents(words, whichWords = 1, lang="de"):
+def getWiktionaryContents(words, whichWords = 1, lang="de", getAllDefs=False):
     words = [words] if isinstance(words,str) else words
     whichWords = [whichWords]*len(words) if isinstance(whichWords,int) else whichWords
     texts = {}
@@ -209,11 +258,14 @@ def getWiktionaryContents(words, whichWords = 1, lang="de"):
         data = requests.get(f"https://"+lang+f".wiktionary.org/w/api.php?action=query&format=json&prop=revisions&rvprop=content&rvslots=*&titles="+"|".join(words2))
         data = json.loads(data.text)["query"]["pages"]
         contents = {data[el]["title"]: None if int(el)<0 else data[el]["revisions"][0]["slots"]["main"]["*"] for el in data}
-        # print(f"\ncontents {contents}")
         for word in contents:
-            multDefs = splitMultDefs(contents[word], lang=lang)
-            # print(f"\nmultdefs {multDefs}")
-            texts[word] = multDefs[whichWords[50*n+words2.index(word)]-1] if multDefs else None
+            try:
+                multDefs = splitMultDefs(contents[word], lang=lang)
+                which = whichWords[50*n+words2.index(word)]
+                texts[word] = multDefs if getAllDefs else multDefs[which-1] if multDefs else None
+            except Exception as e:
+                sys.stderr.write(f"Failed for word {word}\nerror {e}\nwords {words}\nwords2 {words2}\n")
+                raise e
     return texts
 
 # def addAllIpas(notes):
@@ -300,9 +352,8 @@ def newlinetodiv(text):
     return re.sub(r"(\n|^)(.+)(?=\n)",r"\g<1><div>\g<2></div>",text)
 
 def getMainWord(german):
-    word = remHTML(german)
-    print(word)
-    return re.search(r"^(?:((?:sich|(?:\(?(?:der|die|das)(?:/(?:der|die|das))?\)?)))\s+)?(-?\w+)",word)
+    word = remHTML(german) if german else german
+    return re.search(r"^(?:(-?(?:\(?sich\)?|(?:\(?(?:der|die|das|ein|eine)(?:/(?:der|die|das|ein|eine))?\)?)))\s+)?((?:-\w|\w)+)",word).groups()
 
 def getOuter(text, element, innerInstead=False, noparams=False):
     startstring = f"<{element}>" if noparams else f"<{element}[^>]*?>"
@@ -413,18 +464,22 @@ lang="de"
 # word = "Haus"
 # word = "Estland"
 # word = "Betracht"
-word = "Anlass"
-whichWords = 1
+word = "Band"
+whichWords = 2
+
+# print(getIPA2([word],lang="de"))
+print(getMainWord("ein Deutscher"))
 
 # duden = getDudenStr(word)
 # print(f"\n\nword:{word}")
 # print(f"\n{duden}" if duden is None else f"\nmeanings\n{duden[0]}\n\nexamples\n{duden[1]}")
 
-
-texts = getWiktionaryContents(word, whichWords=whichWords, lang=lang)
-content = texts[word]
-meanings = getMeanings(content)
-print(meanings)
+# texts = getWiktionaryContents(word, whichWords=whichWords, lang=lang, getAllDefs=True)
+# content = texts[word]
+# anm = getAnmerkung(content)
+# print(anm)
+# meanings = getMeanings(content)
+# print(meanings)
 # main = getMainWord(word)
 # print(main)
 
