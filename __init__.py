@@ -882,15 +882,18 @@ def getMeanings(contents, word=None, hideWord=True):
         return None
     rawdata = rawdata.group(1)
     replacements = {r"\[\[[^\]]*\|(?P<link>.*?)\]\]": "",
+                    r"(?P<fehl>\{\{QS Bedeutungen\|fehlend\}\})": "",
                     r"\[\[": "", r"\]\]": "", "''(?P<quote>.*?)''": "", r"(?P<ref><ref>.*?</ref>)": "",
                     r":+\[(?P<start>.*?)\]": "", r"kPl\.": "kein Plural", r"kSt\.": "keine Steigerung",
-                    r"(?P<QS>\{\{QS Bedeutungen\|.*?\}\})": ""}
-    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"[\g<start>]", "ref": "", "link": r"\g<1>", "QS": ""}
+                    r"(?P<QS>\{\{QS Bedeutungen\|?.*?\}\})": ""}
+    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"[\g<start>]", "ref": "", "link": r"\g<1>", "QS": "", "fehl": ""}
     if replacements:
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
     rawdata = re.sub(r"\{\{K\|(.*?)\}\}", lambda x: kreplacer(x), rawdata)
     rawdata = re.sub(r"\{\{(.*?)\}\}", lambda x: curlyjoiner(x), rawdata)
+    if not re.search(r"[^\s\d\[\]]{2,}",rawdata):
+        return None
     # if hideWord:
     #     rawdata = rawdata.replace(word,"_")
     return rawdata
@@ -1008,7 +1011,7 @@ def getTranslation(contents, lang="en"):
     rawdata = re.search(r"\*\{\{"+lang+r"}\}:\s*(.*)", contents)
     if rawdata:
         rawdata = rawdata.group(1)
-        rawdata = re.sub(r"\{\{Ü\|"+lang+r"\|(.*?)\}\}", r"\g<1>", rawdata)
+        rawdata = re.sub(r"\{\{Ü\??\|"+lang+r"\|(.*?)\}\}", r"\g<1>", rawdata)
         return checkTranslationNotEmpty(rawdata)
     else:
         return None
