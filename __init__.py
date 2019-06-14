@@ -413,6 +413,7 @@ def getDudenStr(word):
         for k, subsection in enumerate(section):
             addletter = chr(ord('a')+k) if len(section)>1 else ""
             meaning = re.sub("\n|<a href=[^>]*>|</a>", "",subsection[0] or "")
+            meaning = re.sub("<figure.*?</figure>", "",meaning,flags=re.DOTALL)
             meanings.append(f"[{n+1}{addletter}] {meaning}")
             for example in subsection[1]:
                 example = re.sub("\n|<a href=[^>]*>|</a>", "",example)
