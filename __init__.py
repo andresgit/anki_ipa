@@ -718,7 +718,7 @@ def getWiktionary(notes=None, overwrite=False):
                     elif len(params)==3:
                         field, value, checkTest = params
                     if overwrite or note[field]=="" or checkTest:
-                        if value is None: value=""
+                        if value is None or value=="Wiktionary English" and english==note["English"]: value=""
                         # showInfo(f"field {field}\nvalue {value}\ntype value {type(value)}\ntype notefield {type(note[field])}\nnotefield {note[field]}")
                         note[field] = value
             except Exception as e:
