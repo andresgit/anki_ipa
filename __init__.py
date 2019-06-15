@@ -595,7 +595,7 @@ def addFromFile():
                                 ("Definition", newlinetobr(meanings)), 
                                 ("Part of Speech", wordType),
                                 ("Sample sentence", newlinetobr(examples)), 
-                                ("English", english),
+                                # ("English", english),
                                 ("Estonian", estonian),
                                 ("Wiktionary English", english),
                                 "Anmerkung", anmerkung):
@@ -708,7 +708,7 @@ def getWiktionary(notes=None, overwrite=False):
                                 ("Definition", newlinetobr(meanings), meanings and bw.menuWiktionary.Owdefif.isChecked() and re.search(r"[^\s\d\[\]]{2,}",meanings or "")),
                                 ("Part of Speech", wordType),
                                 ("Sample sentence", newlinetobr(examples), examples and bw.menuWiktionary.Owexif.isChecked() and re.search(r"[^\s\d\[\]]{2,}",examples or "")),
-                                ("English", english),
+                                # ("English", english),
                                 ("Estonian", estonian, True),
                                 ("Wiktionary English", english, True),
                                 ("Anmerkung", anmerkung)):
