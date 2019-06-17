@@ -925,8 +925,9 @@ def getExamples(contents):
     rawdata = rawdata.group(1)
     replacements = {r"\[\[": "", r"\]\]": "", "''(?P<quote>.*?)''": "",
                     r"(?:(?<=\n)|^):+(?P<start>\[)(?=[^\[]|$)": "", r"kPl\.": "kein Plural", r"(?P<ref><ref>.*?</ref>)": "",
-                    r"(?P<beispf>\s*\{\{Beispiele fehlen.*?\}\})": "", r"(?P<beleg>\(\[http://.*?\))": ""}
-    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"\g<start>", "ref": "", "beispf": "", "beleg": ""}
+                    r"(?P<beispf>\s*\{\{Beispiele fehlen.*?\}\})": "", r"(?P<beleg>\(\[http://.*?\))": "",
+                    r"\{\{L\|(?P<L>.*?)\|G=.*?\}\}": ""}
+    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"\g<start>", "ref": "", "beispf": "", "beleg": "", "L": "\g<L>"}
     if replacements:
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
     return rawdata
@@ -1012,6 +1013,9 @@ def getTranslation(contents, lang="en"):
     rawdata = re.search(r"\*\{\{"+lang+r"}\}:\s*(.*)", contents)
     if rawdata:
         rawdata = rawdata.group(1)
+        replacements = {r"(?P<ref><ref>.*?</ref>)": "", r"(?P<sup><sup>.*?</sup>)": ""}
+        namedgroups = {"ref": "", "sup": ""}
+        rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
         rawdata = re.sub(r"\{\{Ü\??\|"+lang+r"\|(.*?)\}\}", r"\g<1>", rawdata)
         return checkTranslationNotEmpty(rawdata)
     else:
