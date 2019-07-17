@@ -413,6 +413,7 @@ def getDudenStr(word):
         for k, subsection in enumerate(section):
             addletter = chr(ord('a')+k) if len(section)>1 else ""
             meaning = re.sub("\n|<a href=[^>]*>|</a>", "",subsection[0] or "")
+            meaning = re.sub("<figure.*?</figure>", "",meaning,flags=re.DOTALL)
             meanings.append(f"[{n+1}{addletter}] {meaning}")
             for example in subsection[1]:
                 example = re.sub("\n|<a href=[^>]*>|</a>", "",example)
@@ -594,7 +595,7 @@ def addFromFile():
                                 ("Definition", newlinetobr(meanings)), 
                                 ("Part of Speech", wordType),
                                 ("Sample sentence", newlinetobr(examples)), 
-                                ("English", english),
+                                # ("English", english),
                                 ("Estonian", estonian),
                                 ("Wiktionary English", english),
                                 "Anmerkung", anmerkung):
@@ -707,7 +708,7 @@ def getWiktionary(notes=None, overwrite=False):
                                 ("Definition", newlinetobr(meanings), meanings and bw.menuWiktionary.Owdefif.isChecked() and re.search(r"[^\s\d\[\]]{2,}",meanings or "")),
                                 ("Part of Speech", wordType),
                                 ("Sample sentence", newlinetobr(examples), examples and bw.menuWiktionary.Owexif.isChecked() and re.search(r"[^\s\d\[\]]{2,}",examples or "")),
-                                ("English", english),
+                                # ("English", english),
                                 ("Estonian", estonian, True),
                                 ("Wiktionary English", english, True),
                                 ("Anmerkung", anmerkung)):
@@ -717,7 +718,7 @@ def getWiktionary(notes=None, overwrite=False):
                     elif len(params)==3:
                         field, value, checkTest = params
                     if overwrite or note[field]=="" or checkTest:
-                        if value is None: value=""
+                        if value is None or value=="Wiktionary English" and english==note["English"]: value=""
                         # showInfo(f"field {field}\nvalue {value}\ntype value {type(value)}\ntype notefield {type(note[field])}\nnotefield {note[field]}")
                         note[field] = value
             except Exception as e:
@@ -924,8 +925,9 @@ def getExamples(contents):
     rawdata = rawdata.group(1)
     replacements = {r"\[\[": "", r"\]\]": "", "''(?P<quote>.*?)''": "",
                     r"(?:(?<=\n)|^):+(?P<start>\[)(?=[^\[]|$)": "", r"kPl\.": "kein Plural", r"(?P<ref><ref>.*?</ref>)": "",
-                    r"(?P<beispf>\s*\{\{Beispiele fehlen.*?\}\})": "", r"(?P<beleg>\(\[http://.*?\))": ""}
-    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"\g<start>", "ref": "", "beispf": "", "beleg": ""}
+                    r"(?P<beispf>\s*\{\{Beispiele fehlen.*?\}\})": "", r"(?P<beleg>\(\[http://.*?\))": "",
+                    r"\{\{L\|(?P<L>.*?)\|G=.*?\}\}": ""}
+    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"\g<start>", "ref": "", "beispf": "", "beleg": "", "L": "\g<L>"}
     if replacements:
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
     return rawdata
@@ -1011,6 +1013,9 @@ def getTranslation(contents, lang="en"):
     rawdata = re.search(r"\*\{\{"+lang+r"}\}:\s*(.*)", contents)
     if rawdata:
         rawdata = rawdata.group(1)
+        replacements = {r"(?P<ref><ref>.*?</ref>)": "", r"(?P<sup><sup>.*?</sup>)": ""}
+        namedgroups = {"ref": "", "sup": ""}
+        rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
         rawdata = re.sub(r"\{\{Ü\??\|"+lang+r"\|(.*?)\}\}", r"\g<1>", rawdata)
         return checkTranslationNotEmpty(rawdata)
     else:

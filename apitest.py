@@ -155,14 +155,16 @@ def getAnmerkung(contents):
     return rawdata
 
 def getExamples(contents):
+    if not contents: return None
     rawdata = re.search(r"\{\{Beispiele\}\}\s*(.*?)(?:\n\n|\n\{\{)", contents, flags=re.DOTALL)
     if not rawdata:
         return None
     rawdata = rawdata.group(1)
     replacements = {r"\[\[": "", r"\]\]": "", "''(?P<quote>.*?)''": "",
                     r"(?:(?<=\n)|^):+(?P<start>\[)(?=[^\[]|$)": "", r"kPl\.": "kein Plural", r"(?P<ref><ref>.*?</ref>)": "",
-                    r"(?P<beispf>\s*\{\{Beispiele fehlen.*?\}\})": ""}
-    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"\g<start>", "ref": "", "beispf": ""}
+                    r"(?P<beispf>\s*\{\{Beispiele fehlen.*?\}\})": "", r"(?P<beleg>\(\[http://.*?\))": "",
+                    r"\{\{L\|(?P<L>.*?)\|G=.*?\}\}": ""}
+    namedgroups = {"quote": r"<i>\g<quote></i>", "start": r"\g<start>", "ref": "", "beispf": "", "beleg": "", "L": "\g<L>"}
     if replacements:
         rawdata = re.sub("|".join(replacements.keys()), lambda x: replacer(x,replacements, namedgroups), rawdata)
     return rawdata
@@ -464,18 +466,21 @@ lang="de"
 # word = "Haus"
 # word = "Estland"
 # word = "Betracht"
-word = "Band"
+word = "einbüßen"
 whichWords = 2
 
 # print(getIPA2([word],lang="de"))
-print(getMainWord("ein Deutscher"))
+# print(getMainWord("ein Deutscher"))
 
 # duden = getDudenStr(word)
 # print(f"\n\nword:{word}")
 # print(f"\n{duden}" if duden is None else f"\nmeanings\n{duden[0]}\n\nexamples\n{duden[1]}")
 
-# texts = getWiktionaryContents(word, whichWords=whichWords, lang=lang, getAllDefs=True)
-# content = texts[word]
+texts = getWiktionaryContents(word, whichWords=whichWords, lang=lang, getAllDefs=True)
+# print(texts)
+content = texts[word][0]
+examples = getExamples(content)
+print(examples)
 # anm = getAnmerkung(content)
 # print(anm)
 # meanings = getMeanings(content)
