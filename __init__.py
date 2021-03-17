@@ -168,6 +168,9 @@ def onSetupMenus(self):
     bw.menuWiktionary.OwIPAifvar = menu.addAction("Overwrite IPA if var")
     bw.menuWiktionary.OwIPAifvar.setCheckable(True)
     bw.menuWiktionary.OwIPAifvar.setChecked(False)
+    bw.menuWiktionary.OwIPAignerr = menu.addAction("Ignore missing note fields")
+    bw.menuWiktionary.OwIPAignerr.setCheckable(True)
+    bw.menuWiktionary.OwIPAignerr.setChecked(False)
 
     menu = bw.menuDuden
     bw.menuDuden.Owdefif = menu.addAction("Overwrite definitions if they exist")
@@ -641,6 +644,7 @@ def remTag(note,tag, flush=False):
     if flush and removed: note.flush()
 def getWiktionary(notes=None, overwrite=False):
     overwrite = bw.menuWiktionary.Ow.isChecked()
+    ignoremissf = bw.menuWiktionary.OwIPAignerr.isChecked()
     noteidsall = bw.selectedNotes()
     notesall, missedwords = [], []
     digits = len(str(len(noteidsall)))
@@ -656,7 +660,7 @@ def getWiktionary(notes=None, overwrite=False):
                 foreword, word = getMainWord(w)
                 words.append(word)
                 forewords.append(foreword)
-                which = note["Wiktionary nr"]
+                which = 1 if "Wiktionary nr" not in note and ignoremissf else note["Wiktionary nr"]
                 whichs.append(int(which) if which else 1)
             except Exception as e:
                 sys.stderr.write(f"Failed for word {word}\nerror {e}\nw {w}")
@@ -717,6 +721,8 @@ def getWiktionary(notes=None, overwrite=False):
                         checkTest = False
                     elif len(params)==3:
                         field, value, checkTest = params
+                    if field not in note and ignoremissf:
+                        continue
                     if overwrite or note[field]=="" or checkTest:
                         if value is None or value=="Wiktionary English" and english==note["English"]: value=""
                         # showInfo(f"field {field}\nvalue {value}\ntype value {type(value)}\ntype notefield {type(note[field])}\nnotefield {note[field]}")
