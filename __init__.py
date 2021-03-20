@@ -467,7 +467,7 @@ def addAllIpas(notes, overwrite=False, overwriteifvar=False):
     wordstoget = set()
     jobs = deque()
     fields = {"German": "IPA", "Plural and inflected forms": "IPA Plural"}
-    matchstring = r"(; *|, *|/ *|\n *|<.+?>|\)|\(| +|\. *)"
+    matchstring = r"(; *|, *|/ *|\n *|<.+?>|\)|\(| +|\. *|: *)"
     for m, note in enumerate(notes):
         setToolText(f"{'IPA Started with:':<20} {m+1}/{len(notes)}")
         # print(f"m of note: {m}")
@@ -748,8 +748,9 @@ def getWiktionaryContents(words, whichWords = 1, lang="de", getAllDefs=False):
     for n in range(1+(len(words)-1)//50):
         words2 = words[50*n:50*(n+1)]
         data = requests.get(f"https://"+lang+f".wiktionary.org/w/api.php?action=query&format=json&prop=revisions&rvprop=content&rvslots=*&titles="+"|".join(words2))
-        data = json.loads(data.text)["query"]["pages"]
-        contents = {data[el]["title"]: None if int(el)<0 else data[el]["revisions"][0]["slots"]["main"]["*"] for el in data}
+        data = json.loads(data.text)["query"].get("pages",{})
+        data = {data[el]["title"]: data[el]["revisions"][0]["slots"]["main"]["*"] for el in data if int(el)>=0}
+        contents = {word: data.get(word) for word in words}
         for word in contents:
             try:
                 multDefs = splitMultDefs(contents[word], lang=lang)
@@ -789,14 +790,15 @@ def getPlural(contents, wordtype, foreword=""):
     if wordtype=="Substantiv adjektivisch":
         table = re.search(r"\{\{Deutsch adjektivisch Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
         gender = re.findall(r"\|Genus.*?=\s*(\w*)",table)[0]
-        if foreword in articles.values(): gender = articles[foreword]
+        if foreword in articles.values(): gender = [x for x,y in articles.items() if y==foreword][0]
+        if foreword=="eine": gender = "f"
         stamms = re.findall(r"\|Stamm.*?=\s*(\w*)",table)
         stamm = ""
         plurals = ""
         for n, x in enumerate(stamms):
             stamm += (("" if n==0 else "/") + f"{x+subadjendings[gender]}") if x not in stamms[:n] else ""
             plurals += (("" if n==0 else "/") + f"{x}") if x not in stamms[:n] else ""
-        return f"{foreword} {stamm}" if (foreword in subadjarticles.values() or foreword in articles.keys()) else f"{subadjarticles[gender]} {stamm}", plurals
+        return f"{foreword} {stamm}" if (foreword in subadjarticles.values() or foreword in articles.values()) else f"{subadjarticles[gender]} {stamm}", plurals
     elif wordtype=="Substantiv":
         if re.search(r"\{\{Deutsch Toponym Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL):
             return f"(das) {getWordFromContents(contents)}", None
@@ -947,10 +949,14 @@ def getIPA2(words, whichs=None, lang="de"):
     contents = getWiktionaryContents(words, lang=lang, getAllDefs=True)
     ipas = dict()
     for n, word in enumerate(words):
-        if whichs is None:
-            ipa = contentsf[lang](contents[word])
-        else:
-            ipa = contentsf[lang](getFromListorNone(contents[word],whichs[n]-1))
+        try:
+            if whichs is None:
+                ipa = contentsf[lang](contents[word])
+            else:
+                ipa = contentsf[lang](getFromListorNone(contents[word],whichs[n]-1))
+        except Exception as e:
+            sys.stderr.write(f"Failed getIPA2 for word '{word}', words {words}")
+            raise
         ipa = ipa if ipa else "[.]"
         ipas[word] = ipa
     return ipas
@@ -966,7 +972,7 @@ def getIPA2contents(contents):
                     break
             if newcontents is None: return None
             contents = newcontents
-        word = re.search(r"==\s*(\w+)\s*.*?==",contents)
+        word = re.search(r"==\W*?(\w+)\s*.*?==",contents)
         word=word.group(1)
         rawdata = re.search(r"\{\{IPA\}\}\s*(.*)\s*", contents).group(1)
         replacements = {r"''(?P<quote>.*?)''": "", r"\{\{Lautschrift\|(?P<laut>.*?)\}\}": "", r"(?P<ref><ref>.*?</ref>)": "",

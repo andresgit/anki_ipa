@@ -22,28 +22,35 @@ def getWordType(contents):
     return f"{x.group(2)} adjektivisch" if "adjektivische Deklination" in x.group(1) else x.group(2)
 
 articles = {"m": "der", "f": "die", "n": "das"}
+subadjarticles = {"m": "ein", "f": "eine", "n": "ein"}
+subadjendings = {"m": "r", "f": "", "n": "s"}
 def joinPlural(els):
     return ", ".join([el if isinstance(el,str) else ", ".join(el if len(el)==1 else ["("+ ", ".join(el) +")"]) for el in els])
 def getPlural(contents, wordtype, foreword=""):
     if not contents: return None
     if wordtype=="Substantiv adjektivisch":
         table = re.search(r"\{\{Deutsch adjektivisch Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
+        gender = re.findall(r"\|Genus.*?=\s*(\w*)",table)[0]
+        if foreword in articles.values(): gender = [x for x,y in articles.items() if y==foreword][0]
+        if foreword=="eine": gender = "f"
         stamms = re.findall(r"\|Stamm.*?=\s*(\w*)",table)
         stamm = ""
+        plurals = ""
         for n, x in enumerate(stamms):
-            stamm += (("" if n==0 else "/") + f"{x}") if x not in stamms[:n] else ""
-        return f"der {stamm}", stamm.replace("/","n/")+"n"
+            stamm += (("" if n==0 else "/") + f"{x+subadjendings[gender]}") if x not in stamms[:n] else ""
+            plurals += (("" if n==0 else "/") + f"{x}") if x not in stamms[:n] else ""
+        return f"{foreword} {stamm}" if (foreword in subadjarticles.values() or foreword in articles.values()) else f"{subadjarticles[gender]} {stamm}", plurals
     elif wordtype=="Substantiv":
         if re.search(r"\{\{Deutsch Toponym Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL):
             return f"(das) {getWordFromContents(contents)}", None
         table = re.search(r"\{\{Deutsch (?:Substantiv|Name) Übersicht\s*(.*?)\s*\}\}", contents, flags=re.DOTALL).group(1)
-        genders = re.findall(r"\|Genus.*?=(\w*)",table)
+        genders = re.findall(r"\|Genus.*?=\s*(\w*)",table)
         
-        singulars = re.findall(r"\|Nominativ Singular.*?=\s*(\w*)",table)
+        singulars = re.findall(r"\|Nominativ Singular.*?=\s*((?:-\w|\w)*)",table)
         singular = ""
         for n, x in enumerate(singulars):
             singular += (("" if n==0 else "/") + f"{x}") if x not in singulars[:n] else ""
-        plurals = re.findall(r"\|Nominativ Plural.*?=\s*(\w*)",table)
+        plurals = re.findall(r"\|Nominativ Plural.*?=\s*((?:-\w|\w)*)",table)
         plural = ""
 
         if len(genders)==1 and genders[0] not in articles:
@@ -75,6 +82,10 @@ def getPlural(contents, wordtype, foreword=""):
         return joinPlural([präsens, präteritum, addsichlambda(hilfverb+" " + joinPlural([partizip]))])
     else:
         return None
+
+def addsich(word, foreword):
+    if foreword != "sich": return word
+    return re.sub(r"^([^\s]+)",r"\g<1> sich", word, 1)
 
 def getWordFromContents(contents):
     return re.search(r"==\s*((?:\w|\w-)+)\s*.*?==",contents).group(1)
@@ -181,11 +192,23 @@ def addFromFile():
         data.append([word.group(0),int(number.group(0)) if number else None,hint.group(0) if hint else None])
     print(data)
 
-def getIPA2(words, lang="de"):
+def getIPA2(words, whichs=None, lang="de"):
     contentsf = {"de": getIPA2contents, "en": getIPA2contentsen}
     if isinstance(words,str): words = [words]
     contents = getWiktionaryContents(words, lang=lang, getAllDefs=True)
-    return {word: contentsf[lang](contents[word]) if contentsf[lang](contents[word]) else "[.]" for word in words}
+    ipas = dict()
+    for n, word in enumerate(words):
+        try:
+            if whichs is None:
+                ipa = contentsf[lang](contents[word])
+            else:
+                ipa = contentsf[lang](getFromListorNone(contents[word],whichs[n]-1))
+        except Exception as e:
+            sys.stderr.write(f"Failed getIPA2 for word {word}, words {words}")
+            raise
+        ipa = ipa if ipa else "[.]"
+        ipas[word] = ipa
+    return ipas
 
 def getIPA2contents(contents):
     try:
@@ -198,7 +221,7 @@ def getIPA2contents(contents):
                     break
             if newcontents is None: return None
             contents = newcontents
-        word = re.search(r"==\s*(\w+)\s*.*?==",contents)
+        word = re.search(r"==\W*?(\w+)\s*.*?==",contents)
         word=word.group(1)
         rawdata = re.search(r"\{\{IPA\}\}\s*(.*)\s*", contents).group(1)
         replacements = {r"''(?P<quote>.*?)''": "", r"\{\{Lautschrift\|(?P<laut>.*?)\}\}": "", r"(?P<ref><ref>.*?</ref>)": "",
@@ -259,7 +282,8 @@ def getWiktionaryContents(words, whichWords = 1, lang="de", getAllDefs=False):
         words2 = words[50*n:50*(n+1)]
         data = requests.get(f"https://"+lang+f".wiktionary.org/w/api.php?action=query&format=json&prop=revisions&rvprop=content&rvslots=*&titles="+"|".join(words2))
         data = json.loads(data.text)["query"]["pages"]
-        contents = {data[el]["title"]: None if int(el)<0 else data[el]["revisions"][0]["slots"]["main"]["*"] for el in data}
+        data = {data[el]["title"]: data[el]["revisions"][0]["slots"]["main"]["*"] for el in data if int(el)>=0}
+        contents = {word: data.get(word) for word in words}
         for word in contents:
             try:
                 multDefs = splitMultDefs(contents[word], lang=lang)
@@ -463,24 +487,28 @@ def getDudenStr(word):
 # parts = re.split(r"(^[^\n]*?<dl(?: |>).*Beispiele?.*?</dl>)",text,flags=re.MULTILINE+re.DOTALL)
 # print(parts)
 lang="de"
+foreword = ""
 # word = "Haus"
 # word = "Estland"
 # word = "Betracht"
-word = "einbüßen"
+word = "abschließen"
 whichWords = 2
+foreword = "der"
 
+words = ['schloss', 'ab:', 'abschließen', 'ab', 'schließt', 'hat', 'abgeschlossen']
 # print(getIPA2([word],lang="de"))
+print(getIPA2(words,lang="de"))
 # print(getMainWord("ein Deutscher"))
 
 # duden = getDudenStr(word)
 # print(f"\n\nword:{word}")
 # print(f"\n{duden}" if duden is None else f"\nmeanings\n{duden[0]}\n\nexamples\n{duden[1]}")
 
-texts = getWiktionaryContents(word, whichWords=whichWords, lang=lang, getAllDefs=True)
+# texts = getWiktionaryContents(word, whichWords=whichWords, lang=lang, getAllDefs=True)
 # print(texts)
-content = texts[word][0]
-examples = getExamples(content)
-print(examples)
+# content = texts[word][0]
+# examples = getExamples(content)
+# print(examples)
 # anm = getAnmerkung(content)
 # print(anm)
 # meanings = getMeanings(content)
@@ -488,7 +516,7 @@ print(examples)
 # main = getMainWord(word)
 # print(main)
 
-# plural = getPlural(content,getWordType(content))
+# plural = getPlural(content,getWordType(content),foreword)
 # print(plural)
 # meanings = getMeanings(texts[word], word=word)
 # print(meanings)
